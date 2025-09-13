@@ -1,0 +1,546 @@
+# Repo layout
+# (Cargo workspace)
+
+# /devit
+# ├─ Cargo.toml            # workspace
+# ├─ devit.toml            # runtime config (backend, policy, sandbox)
+# ├─ crates/
+# │  ├─ cli/
+# │  │  ├─ Cargo.toml
+# │  │  └─ src/main.rs
+# │  ├─ agent/
+# │  │  ├─ Cargo.toml
+# │  │  └─ src/lib.rs
+# │  ├─ common/
+# │  │  ├─ Cargo.toml
+# │  │  └─ src/lib.rs
+# │  ├─ tui/
+# │  │  ├─ Cargo.toml
+# │  │  └─ src/lib.rs
+# │  ├─ sandbox/
+# │  │  ├─ Cargo.toml
+# │  │  └─ src/lib.rs
+# │  ├─ backends/openai_like/
+# │  │  ├─ Cargo.toml
+# │  │  └─ src/lib.rs
+# │  └─ tools/
+# │     ├─ Cargo.toml
+# │     └─ src/{fs.rs,git.rs,shell.rs,codeexec.rs,mod.rs}
+# └─ README.md
+
+# -----------------------------
+# Top-level Cargo.toml (workspace)
+# -----------------------------
+[workspace]
+members = [
+    "crates/cli",
+    "crates/agent",
+    "crates/common",
+    "crates/tui",
+    "crates/sandbox",
+    "crates/backends/openai_like",
+    "crates/tools",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "zstd", "stream"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "fs"] }
+ratatui = "0.28"
+crossterm = "0.28"
+async-trait = "0.1"
+which = "6"
+bytes = "1"
+
+# -----------------------------
+# devit.toml (runtime config)
+# -----------------------------
+[backend]
+# One of: openai_like | ollama | llama_cpp
+# For MVP we map all to an OpenAI-compatible endpoint
+kind = "openai_like"
+base_url = "http://localhost:11434/v1"   # Ollama OpenAI-compatible proxy
+model = "qwen2.5-coder:14b"
+api_key = ""                               # optional for local
+
+[policy]
+approval = "on-failure"         # untrusted | on-failure | on-request | never
+sandbox  = "workspace-write"     # read-only | workspace-write | danger-full-access
+
+[sandbox]
+cpu_limit = 2
+mem_limit_mb = 2048
+net = "off"
+
+[git]
+conventional = true
+max_staged_files = 50
+
+# -----------------------------
+# crates/common/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+# -----------------------------
+# crates/common/src/lib.rs
+# -----------------------------
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config
+{
+    pub backend: BackendCfg,
+    pub policy: PolicyCfg,
+    pub sandbox: SandboxCfg,
+    pub git: GitCfg,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackendCfg
+{
+    pub kind: String,
+    pub base_url: String,
+    pub model: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyCfg
+{
+    pub approval: String,
+    pub sandbox: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxCfg
+{
+    pub cpu_limit: u32,
+    pub mem_limit_mb: u32,
+    pub net: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCfg
+{
+    pub conventional: bool,
+    pub max_staged_files: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Event
+{
+    ToolCall { name: String, args: serde_json::Value },
+    CommandOut { line: String },
+    Diff { unified: String },
+    AskApproval { summary: String },
+    Error { message: String },
+    Info { message: String },
+}
+
+# -----------------------------
+# crates/backends/openai_like/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-backend-openai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+
+devit-common = { path = "../../common" }
+
+# -----------------------------
+# crates/backends/openai_like/src/lib.rs
+# -----------------------------
+use anyhow::Result;
+use async_trait::async_trait;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use devit-common::Config;
+
+#[async_trait]
+pub trait LlmBackend: Send + Sync
+{
+    async fn chat(&self, sys: &str, user: &str) -> Result<String>;
+}
+
+pub struct OpenAiLike
+{
+    cfg: Config,
+    http: Client,
+}
+
+impl OpenAiLike
+{
+    pub fn new(cfg: Config) -> Self
+    {
+        Self { cfg, http: Client::new() }
+    }
+}
+
+#[derive(Serialize)]
+struct ChatReq<'a>
+{
+    model: &'a str,
+    messages: Vec<Msg<'a>>,
+    stream: bool,
+}
+
+#[derive(Serialize)]
+struct Msg<'a>
+{
+    role: &'a str,
+    content: &'a str,
+}
+
+#[derive(Deserialize)]
+struct ChatResp
+{
+    choices: Vec<Choice>,
+}
+
+#[derive(Deserialize)]
+struct Choice
+{
+    message: ChoiceMsg,
+}
+
+#[derive(Deserialize)]
+struct ChoiceMsg
+{
+    content: String,
+}
+
+#[async_trait]
+impl LlmBackend for OpenAiLike
+{
+    async fn chat(&self, sys: &str, user: &str) -> Result<String>
+    {
+        let url = format!("{}/chat/completions", self.cfg.backend.base_url);
+        let req = ChatReq
+        {
+            model: &self.cfg.backend.model,
+            messages: vec![
+                Msg { role: "system", content: sys },
+                Msg { role: "user", content: user },
+            ],
+            stream: false,
+        };
+
+        let mut rb = self.http.post(&url).json(&req);
+        if !self.cfg.backend.api_key.is_empty()
+        {
+            rb = rb.bearer_auth(&self.cfg.backend.api_key);
+        }
+
+        let resp: ChatResp = rb.send().await?.error_for_status()?.json().await?;
+        Ok(resp.choices.first().map(|c| c.message.content.clone()).unwrap_or_default())
+    }
+}
+
+# -----------------------------
+# crates/tools/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+which = { workspace = true }
+tokio = { workspace = true }
+
+# -----------------------------
+# crates/tools/src/mod.rs
+# -----------------------------
+pub mod fs;
+pub mod git;
+pub mod shell;
+pub mod codeexec;
+
+# -----------------------------
+# crates/tools/src/fs.rs
+# -----------------------------
+use anyhow::{Context, Result};
+use std::path::Path;
+
+pub fn read_to_string(path: &str) -> Result<String>
+{
+    let p = Path::new(path);
+    let s = std::fs::read_to_string(p).with_context(|| format!("read {path}"))?;
+    Ok(s)
+}
+
+pub fn write_from_string(path: &str, content: &str) -> Result<()>
+{
+    let p = Path::new(path);
+    if let Some(parent) = p.parent() { std::fs::create_dir_all(parent)?; }
+    std::fs::write(p, content)?;
+    Ok(())
+}
+
+# -----------------------------
+# crates/tools/src/shell.rs
+# -----------------------------
+use anyhow::Result;
+use tokio::process::Command;
+
+pub async fn run(cmd: &str) -> Result<i32>
+{
+    let status = if cfg!(target_os = "windows")
+    {
+        Command::new("cmd").arg("/C").arg(cmd).status().await?
+    }
+    else
+    {
+        Command::new("bash").arg("-lc").arg(cmd).status().await?
+    };
+
+    Ok(status.code().unwrap_or(-1))
+}
+
+# -----------------------------
+# crates/agent/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+devit-common = { path = "../common" }
+devit-backend-openai = { path = "../backends/openai_like" }
+devit-tools = { path = "../tools" }
+
+# -----------------------------
+# crates/agent/src/lib.rs
+# -----------------------------
+use anyhow::Result;
+use devit_backend_openai::{LlMBackend, OpenAiLike};
+use devit_common::{Config, Event};
+
+pub struct Agent
+{
+    cfg: Config,
+    llm: Box<dyn LlmBackend>,
+}
+
+impl Agent
+{
+    pub fn new(cfg: Config) -> Self
+    {
+        let llm = OpenAiLike::new(cfg.clone());
+        Self { cfg, llm: Box::new(llm) }
+    }
+
+    pub async fn suggest_patch(&self, goal: &str, ctx: &str) -> Result<String>
+    {
+        let sys = "You are a code assistant that outputs unified diffs only.";
+        let prompt = format!("Goal: {goal}\nContext:\n{ctx}\nOutput a unified diff.");
+        let answer = self.llm.chat(sys, &prompt).await?;
+        Ok(answer)
+    }
+}
+
+# -----------------------------
+# crates/tui/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+
+# -----------------------------
+# crates/tui/src/lib.rs
+# -----------------------------
+// Minimal placeholder TUI; later: streaming events
+
+# -----------------------------
+# crates/sandbox/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-sandbox"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+
+# -----------------------------
+# crates/sandbox/src/lib.rs
+# -----------------------------
+// TODO: bwrap/wasmtime integration (MVP: noop sandbox descriptor)
+
+# -----------------------------
+# crates/cli/Cargo.toml
+# -----------------------------
+[package]
+name = "devit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+
+# local crates
+
+devit-common = { path = "../common" }
+devit-agent = { path = "../agent" }
+
+# -----------------------------
+# crates/cli/src/main.rs
+# -----------------------------
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
+use devit_agent::Agent;
+use devit_common::Config;
+use std::fs;
+
+#[derive(Parser, Debug)]
+#[command(name = "devit", version, about = "DevIt CLI - patch-only agent", long_about = None)]
+struct Cli
+{
+    /// Goal to achieve (e.g., \"add websocket support\")
+    #[arg(short, long)]
+    goal: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands
+{
+    /// Propose a patch (unified diff)
+    Suggest
+    {
+        #[arg(default_value = ".")] path: String,
+    },
+
+    /// Apply a unified diff to the workspace (TODO)
+    Apply
+    {
+        #[arg(default_value = "-")] diff: String,
+    },
+}
+
+#[tokio::main]
+async fn main() -> Result<()>
+{
+    tracing_subscriber::fmt().with_env_filter("info").init();
+
+    let cli = Cli::parse();
+    let cfg: Config = load_cfg("devit.toml").context("load config")?;
+    let agent = Agent::new(cfg);
+
+    match (cli.command, cli.goal) {
+        (Some(Commands::Suggest { path }), Some(goal)) =>
+        {
+            let ctx = collect_context(&path)?;
+            let diff = agent.suggest_patch(&goal, &ctx).await?;
+            println!("{}", diff);
+        }
+        _ =>
+        {
+            eprintln!("Usage: devit --goal \"...\" suggest [PATH]");
+        }
+    }
+
+    Ok(())
+}
+
+fn load_cfg(path: &str) -> Result<Config>
+{
+    let s = fs::read_to_string(path)?;
+    let cfg: Config = toml::from_str(&s)?;
+    Ok(cfg)
+}
+
+fn collect_context(path: &str) -> Result<String>
+{
+    // MVP: naive — list a few files with content; later: git-aware, size limits
+    let mut out = String::new();
+    for entry in walkdir::WalkDir::new(path).max_depth(2) {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            let p = entry.path().display().to_string();
+            if p.ends_with(".rs") || p.ends_with("Cargo.toml") {
+                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    out.push_str(&format!("\n>>> FILE: {}\n{}\n", p, content));
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+# -----------------------------
+# README.md (extrait)
+# -----------------------------
+# DevIt (temp name)
+
+Rust CLI agent **patch-only**, sandboxable, interop LLM (OpenAI-like/Ollama).
+
+- ⚙️ Patch-only: produit des diffs unifiés, jamais de modifications opaques
+- 🔐 Sandbox et politiques d'approbation (config TOML)
+- 🧠 Backend LLM interchangeable (OpenAI-like/Ollama/llama.cpp)
+
+```bash
+cargo run -p devit -- --goal "ajoute un test" suggest .
+```
+
+# -----------------------------
+# STARTING PLAN (MVP)
+# -----------------------------
+1) **Backend**: OpenAI-like (Ollama local) – chat completions → diff unifié
+2) **Patch-only**: `suggest` imprime le diff; `apply` (prochain commit) applique
+3) **Context builder** minimal: fichiers .rs + Cargo.toml + README
+4) **Policy** (déclarative) chargée depuis devit.toml (sans enforcement pour MVP)
+5) **Next**: `apply` patch + `git commit` conventionnel + sandbox bwrap/no-net

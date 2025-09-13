@@ -1,0 +1,92 @@
+diff --git a/crates/tools/src/git.rs b/crates/tools/src/git.rs
+index 9a1b1b3..a7e2c06 100644
+--- a/crates/tools/src/git.rs
++++ b/crates/tools/src/git.rs
+@@ -1,6 +1,6 @@
+-use anyhow::{anyhow, Result};
++use anyhow::{anyhow, Result};
+ use std::io::Write;
+ use std::process::{Command, Stdio};
+ 
+@@ -42,9 +42,9 @@ fn run_git_with_patch(args: &[&str], patch: &str) -> Result<(bool, String)>
+     Ok((ok, txt))
+ }
+ 
+-/// Vérifie que le patch s'applique proprement (dry-run)
++/// Vérifie que le patch s'applique proprement (dry-run), sinon renvoie l'erreur Git.
+ pub fn apply_check(patch: &str) -> Result<bool>
+ {
+-    let (ok, _out) = run_git_with_patch(&["apply", "--check", "-"], patch)?;
+-    Ok(ok)
++    let (ok, out) = run_git_with_patch(&["apply", "--check", "-"], patch)?;
++    if !ok { return Err(anyhow!("git apply --check a échoué:\n{out}")); }
++    Ok(true)
+ }
+ 
+ /// Retourne le détail des fichiers touchés par le patch
+@@ -71,10 +71,39 @@ pub fn numstat(patch: &str) -> Result<Vec<NumstatEntry>>
+     Ok(v)
+ }
+ 
+-/// Applique et stage le patch
++/// Applique et stage le patch. Tente un fallback --3way si --index échoue.
+ pub fn apply_index(patch: &str) -> Result<bool>
+ {
+-    let (ok, _out) = run_git_with_patch(&["apply", "--index", "-"], patch)?;
+-    Ok(ok)
++    let (ok, out) = run_git_with_patch(&["apply", "--index", "-"], patch)?;
++    if ok { return Ok(true); }
++    // Fallback 3-way (utile si index/worktree ne matchent pas parfaitement)
++    let (ok2, out2) = run_git_with_patch(&["apply", "--3way", "--index", "-"], patch)?;
++    if ok2 { return Ok(true); }
++    Err(anyhow!(format!("git apply --index a échoué:\n{out}\n--- 3-way fallback ---\n{out2}")))
+ }
+ 
+ pub fn commit(message: &str) -> Result<bool>
+ {
+@@ -94,3 +123,24 @@ pub fn head_short() -> Option<String>
+         } else { None })
+ }
++
++pub fn is_worktree_clean() -> bool
++{
++    let wt = Command::new("git").args(["diff", "--quiet"]).status()
++        .map(|s| s.success()).unwrap_or(true);
++    let idx = Command::new("git").args(["diff", "--cached", "--quiet"]).status()
++        .map(|s| s.success()).unwrap_or(true);
++    wt && idx
++}
+diff --git a/crates/cli/src/main.rs b/crates/cli/src/main.rs
+index a2d3f45..c8d1e21 100644
+--- a/crates/cli/src/main.rs
++++ b/crates/cli/src/main.rs
+@@ -27,6 +27,8 @@ enum Commands
+     Apply
+     {
+         /// Read diff from file, or '-' for stdin (default)
+         #[arg(default_value = "-")] input: String,
+         /// Auto-approve (no prompt)
+         #[arg(long)] yes: bool,
++        /// Continue even if worktree/index is dirty (try 3-way)
++        #[arg(long)] force: bool,
+     },
+@@ -58,12 +60,22 @@ async fn main() -> Result<()>
+-        (Some(Commands::Apply { input, yes }), goal) =>
++        (Some(Commands::Apply { input, yes, force }), goal) =>
+         {
+             ensure_git_repo()?;
+             let patch = read_patch(&input)?;
++            // 0) index propre ?
++            if !git::is_worktree_clean() && !force {
++                anyhow::bail!(
++                    "Le worktree ou l'index contient des modifications.\n\
++                     - Commit/stash tes changements OU relance avec --force (tentative 3-way)."
++                );
++            }
+             // 1) dry-run
+-            if !git::apply_check(&patch)? {
+-                anyhow::bail!("Le patch ne s'applique pas proprement (git apply --check).");
+-            }
++            git::apply_check(&patch)?; // renvoie Err(...) avec le message Git détaillé
+             // 2) résumé numstat
+             let ns = git::numstat(&patch)?;

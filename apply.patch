@@ -1,0 +1,297 @@
+diff --git a/crates/tools/src/git.rs b/crates/tools/src/git.rs
+index 4b825dc..9a1b1b3 100644
+--- a/crates/tools/src/git.rs
++++ b/crates/tools/src/git.rs
+@@ -1,34 +1,139 @@
+-use anyhow::Result;
+-use std::process::Command;
++use anyhow::{anyhow, Result};
++use std::io::Write;
++use std::process::{Command, Stdio};
+
+ pub fn is_git_available() -> bool
+ {
+     Command::new("git").arg("--version").output().is_ok()
+ }
+
+ pub fn in_repo() -> bool
+ {
+     Command::new("git").args(["rev-parse", "--is-inside-work-tree"])
+         .output()
+         .map(|o| o.status.success())
+         .unwrap_or(false)
+ }
+
+ pub fn status_porcelain() -> Result<String>
+ {
+     let out = Command::new("git").args(["status", "--porcelain"]).output()?;
+     Ok(String::from_utf8_lossy(&out.stdout).to_string())
+ }
+ 
+-pub fn apply_check_from_stdin() -> Result<bool>
+-{
+-    // L'appelant pipe le diff sur stdin : `git apply --check -`
+-    let status = Command::new("git").args(["apply", "--check", "-"]).status()?;
+-    Ok(status.success())
+-}
+-
+-pub fn apply_index_from_stdin() -> Result<bool>
+-{
+-    let status = Command::new("git").args(["apply", "--index", "-"]).status()?;
+-    Ok(status.success())
+-}
++/// Représentation d'une ligne `git apply --numstat`
++#[derive(Debug, Clone)]
++pub struct NumstatEntry
++{
++    pub added: u64,
++    pub deleted: u64,
++    pub path: String,
++}
++
++fn run_git_with_patch(args: &[&str], patch: &str) -> Result<(bool, String)>
++{
++    let mut child = Command::new("git")
++        .args(args)
++        .stdin(Stdio::piped())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::piped())
++        .spawn()?;
++
++    if let Some(stdin) = child.stdin.as_mut()
++    {
++        stdin.write_all(patch.as_bytes())?;
++    }
++
++    let out = child.wait_with_output()?;
++    let ok = out.status.success();
++    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
++    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
++    let txt = if ok { stdout } else { format!("{stdout}{stderr}") };
++    Ok((ok, txt))
++}
++
++/// Vérifie que le patch s'applique proprement (dry-run)
++pub fn apply_check(patch: &str) -> Result<bool>
++{
++    let (ok, _out) = run_git_with_patch(&["apply", "--check", "-"], patch)?;
++    Ok(ok)
++}
++
++/// Retourne le détail des fichiers touchés par le patch
++pub fn numstat(patch: &str) -> Result<Vec<NumstatEntry>>
++{
++    let (ok, out) = run_git_with_patch(&["apply", "--numstat", "-"], patch)?;
++    if !ok { return Err(anyhow!("git apply --numstat a échoué:\n{out}")); }
++    let mut v = Vec::new();
++    for line in out.lines()
++    {
++        // format: "<added>\t<deleted>\t<path>"
++        let mut parts = line.splitn(3, '\t');
++        let a = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
++        let d = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
++        let p = parts.next().unwrap_or("").to_string();
++        if !p.is_empty() { v.push(NumstatEntry { added: a, deleted: d, path: p }); }
++    }
++    Ok(v)
++}
++
++/// Applique et stage le patch
++pub fn apply_index(patch: &str) -> Result<bool>
++{
++    let (ok, _out) = run_git_with_patch(&["apply", "--index", "-"], patch)?;
++    Ok(ok)
++}
++
++pub fn commit(message: &str) -> Result<bool>
++{
++    let status = Command::new("git")
++        .args(["commit", "-m", message])
++        .status()?;
++    Ok(status.success())
++}
++
++pub fn head_short() -> Option<String>
++{
++    Command::new("git")
++        .args(["rev-parse", "--short", "HEAD"])
++        .output()
++        .ok()
++        .and_then(|o| if o.status.success() {
++            Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
++        } else { None })
++}
+
+diff --git a/crates/cli/src/main.rs b/crates/cli/src/main.rs
+index 1f2e3d4..5a6b7c8 100644
+--- a/crates/cli/src/main.rs
++++ b/crates/cli/src/main.rs
+@@ -1,19 +1,28 @@
+ use anyhow::{Context, Result};
+ use clap::{Parser, Subcommand};
+ use devit_agent::Agent;
+ use devit_common::Config;
++use devit_tools::git;
+ use std::fs;
++use std::io::{Read, stdin};
+
+ #[derive(Parser, Debug)]
+ #[command(name = "devit", version, about = "DevIt CLI - patch-only agent", long_about = None)]
+ struct Cli
+ {
+     /// Goal to achieve (e.g., \"add websocket support\")
+     #[arg(short, long)]
+     goal: Option<String>,
+ 
+     #[command(subcommand)]
+     command: Option<Commands>,
+ }
+ 
+ #[derive(Subcommand, Debug)]
+ enum Commands
+ {
+     /// Propose a patch (unified diff)
+     Suggest
+     {
+         #[arg(default_value = ".")] path: String,
+     },
+ 
+     /// Apply a unified diff to the workspace (TODO)
+-    Apply
+-    {
+-        #[arg(default_value = "-")] diff: String,
+-    },
++    Apply
++    {
++        /// Read diff from file, or '-' for stdin (default)
++        #[arg(default_value = "-")] input: String,
++        /// Auto-approve (no prompt)
++        #[arg(long)] yes: bool,
++    },
+ }
+ 
+ #[tokio::main]
+ async fn main() -> Result<()>
+ {
+     tracing_subscriber::fmt().with_env_filter("info").init();
+ 
+     let cli = Cli::parse();
+     let cfg: Config = load_cfg("devit.toml").context("load config")?;
+     let agent = Agent::new(cfg.clone());
+ 
+     match (cli.command, cli.goal) {
+         (Some(Commands::Suggest { path }), Some(goal)) =>
+         {
+             let ctx = collect_context(&path)?;
+             let diff = agent.suggest_patch(&goal, &ctx).await?;
+             println!("{}", diff);
+         }
+-        _ =>
+-        {
+-            eprintln!("Usage: devit --goal \"...\" suggest [PATH]");
+-        }
++        (Some(Commands::Apply { input, yes }), goal) =>
++        {
++            ensure_git_repo()?;
++            let patch = read_patch(&input)?;
++            // 1) dry-run
++            if !git::apply_check(&patch)? {
++                anyhow::bail!("Le patch ne s'applique pas proprement (git apply --check).");
++            }
++            // 2) résumé numstat
++            let ns = git::numstat(&patch)?;
++            let files = ns.len();
++            let added: u64 = ns.iter().map(|e| e.added).sum();
++            let deleted: u64 = ns.iter().map(|e| e.deleted).sum();
++            let summary = format!("{} fichier(s), +{}, -{}", files, added, deleted);
++            // 3) approval (sauf policy 'never' ou --yes)
++            let must_ask = !yes && cfg.policy.approval.to_lowercase() != "never";
++            if must_ask {
++                eprintln!("Patch prêt: {summary}");
++                for e in ns.iter().take(10) { eprintln!("  - {}", e.path); }
++                if ns.len() > 10 { eprintln!("  … ({} autres)", ns.len() - 10); }
++                if !ask_approval()? { anyhow::bail!("Annulé par l'utilisateur."); }
++            }
++            // 4) apply + commit
++            if !git::apply_index(&patch)? {
++                anyhow::bail!("Échec git apply --index.");
++            }
++            let commit_msg = default_commit_msg(goal.as_deref(), &summary);
++            if !git::commit(&commit_msg)? {
++                anyhow::bail!("Échec git commit.");
++            }
++            let sha = git::head_short().unwrap_or_default();
++            println!("✅ Commit {}: {}", sha, commit_msg);
++        }
++        _ => {
++            eprintln!("Usage:\n  devit --goal \"...\" suggest [PATH]\n  devit apply [-|PATCH.diff] [--yes]");
++        }
+     }
+ 
+     Ok(())
+ }
+ 
+ fn load_cfg(path: &str) -> Result<Config>
+ {
+     let s = fs::read_to_string(path)?;
+     let cfg: Config = toml::from_str(&s)?;
+     Ok(cfg)
+ }
+ 
+ fn collect_context(path: &str) -> Result<String>
+ {
+     // MVP: naive — list a few files with content; later: git-aware, size limits
+     let mut out = String::new();
+     for entry in walkdir::WalkDir::new(path).max_depth(2) {
+         let entry = entry?;
+         if entry.file_type().is_file() {
+             let p = entry.path().display().to_string();
+             if p.ends_with(".rs") || p.ends_with("Cargo.toml") {
+                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                     out.push_str(&format!("\n>>> FILE: {}\n{}\n", p, content));
+                 }
+             }
+         }
+     }
+     Ok(out)
+ }
++
++fn read_patch(input: &str) -> Result<String>
++{
++    if input == "-" {
++        let mut s = String::new();
++        stdin().lock().read_to_string(&mut s)?;
++        Ok(s)
++    } else {
++        Ok(fs::read_to_string(input)?)
++    }
++}
++
++fn ensure_git_repo() -> Result<()> {
++    if !git::is_git_available() {
++        anyhow::bail!("git n'est pas disponible dans le PATH.");
++    }
++    if !git::in_repo() {
++        anyhow::bail!("pas dans un dépôt git (git rev-parse --is-inside-work-tree).");
++    }
++    Ok(())
++}
++
++fn ask_approval() -> Result<bool>
++{
++    use std::io::{self, Write};
++    eprint!("Appliquer le patch et committer ? [y/N] ");
++    io::stderr().flush().ok();
++    let mut buf = String::new();
++    io::stdin().read_line(&mut buf)?;
++    let ans = buf.trim().to_lowercase();
++    Ok(ans == "y" || ans == "yes")
++}
++
++fn default_commit_msg(goal: Option<&str>, summary: &str) -> String
++{
++    match goal {
++        Some(g) if !g.trim().is_empty() => format!("feat: {} ({})", g.trim(), summary),
++        _ => format!("chore: apply patch ({})", summary),
++    }
++}

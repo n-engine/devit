@@ -1,0 +1,239 @@
+diff --git a/crates/agent/src/lib.rs b/crates/agent/src/lib.rs
+index 7b1b7b1..98c9f31 100644
+--- a/crates/agent/src/lib.rs
++++ b/crates/agent/src/lib.rs
+@@ -1,29 +1,61 @@
+ use anyhow::Result;
+-use devit_backend_openai::{LlmBackend, OpenAiLike};
+-use devit_common::{Config, Event};
++use devit_backend_openai::{LlmBackend, OpenAiLike};
++use devit_common::Config;
+ 
+ pub struct Agent
+ {
+     cfg: Config,
+     llm: Box<dyn LlmBackend>,
+ }
+ 
+ impl Agent
+ {
+     pub fn new(cfg: Config) -> Self
+     {
+         let llm = OpenAiLike::new(cfg.clone());
+         Self { cfg, llm: Box::new(llm) }
+     }
+ 
+     pub async fn suggest_patch(&self, goal: &str, ctx: &str) -> Result<String>
+     {
+         let sys = "You are a code assistant that outputs unified diffs only.";
+         let prompt = format!("Goal: {goal}\nContext:\n{ctx}\nOutput a unified diff.");
+         let answer = self.llm.chat(sys, &prompt).await?;
+         Ok(answer)
+     }
++
++    /// Génère un message de commit (Conventional Commits) à partir du goal, d'un résumé et d'un extrait de diff.
++    /// Retourne une ligne courte (≤ 72 chars) ; body optionnel non inclus (MVP).
++    pub async fn commit_message(&self, goal: &str, summary: &str, diff_head: &str) -> Result<String>
++    {
++        let sys = "You write Conventional Commit messages.\n\
++                   Output a SINGLE LINE: <type>: <short message>. \
++                   Types: feat, fix, chore, docs, test, refactor.";
++        let prompt = format!(
++            "Goal: {goal}\nSummary: {summary}\nDiff (first lines):\n{}\n\
++             Rules: 1 line only, max 72 chars, no trailing dot.",
++            diff_head
++        );
++        let msg = self.llm.chat(sys, &prompt).await?;
++        Ok(msg.lines().next().unwrap_or(&msg).trim().to_string())
++    }
+ }
+diff --git a/crates/tools/src/codeexec.rs b/crates/tools/src/codeexec.rs
+index 5555555..aa22bb3 100644
+--- a/crates/tools/src/codeexec.rs
++++ b/crates/tools/src/codeexec.rs
+@@ -1,20 +1,77 @@
+-use anyhow::Result;
+-use std::process::Command;
++use anyhow::{anyhow, Result};
++use std::process::{Command, Stdio};
+ 
+ pub enum Stack
+ {
+     Cargo,
+     Npm,
+     CMake,
+     Unknown,
+ }
+ 
+ pub fn detect_stack() -> Stack
+ {
+     if std::path::Path::new("Cargo.toml").exists() { return Stack::Cargo; }
+     if std::path::Path::new("package.json").exists() { return Stack::Npm; }
+     if std::path::Path::new("CMakeLists.txt").exists() { return Stack::CMake; }
+     Stack::Unknown
+ }
+ 
+-pub fn run_tests() -> Result<i32> { Ok(Command::new("true").status()?.code().unwrap_or(0)) }
++pub fn run_tests() -> Result<i32>
++{
++    match detect_stack() {
++        Stack::Cargo => {
++            let status = Command::new("cargo")
++                .args(["test", "--all", "--quiet"])
++                .status()?;
++            Ok(status.code().unwrap_or(-1))
++        }
++        Stack::Npm => {
++            // npm test (silencieux si possible)
++            let status = Command::new("npm")
++                .args(["test", "--silent"])
++                .status()?;
++            Ok(status.code().unwrap_or(-1))
++        }
++        Stack::CMake => {
++            // Essaye ctest si disponible
++            let status = Command::new("ctest")
++                .args(["--output-on-failure"])
++                .status();
++            match status {
++                Ok(s) => Ok(s.code().unwrap_or(-1)),
++                Err(_) => Err(anyhow!("Aucun runner de tests CMake/ctest détecté")),
++            }
++        }
++        Stack::Unknown => Err(anyhow!("Stack inconnue: impossible d'exécuter les tests")),
++    }
++}
++
++pub fn run_tests_with_output() -> Result<(i32, String)>
++{
++    match detect_stack() {
++        Stack::Cargo => {
++            let out = Command::new("cargo")
++                .args(["test", "--all"])
++                .stdout(Stdio::piped()).stderr(Stdio::piped())
++                .output()?;
++            let txt = String::from_utf8_lossy(&out.stdout).to_string()
++                + &String::from_utf8_lossy(&out.stderr).to_string();
++            Ok((out.status.code().unwrap_or(-1), txt))
++        }
++        Stack::Npm => {
++            let out = Command::new("npm")
++                .args(["test"])
++                .stdout(Stdio::piped()).stderr(Stdio::piped())
++                .output()?;
++            let txt = String::from_utf8_lossy(&out.stdout).to_string()
++                + &String::from_utf8_lossy(&out.stderr).to_string();
++            Ok((out.status.code().unwrap_or(-1), txt))
++        }
++        Stack::CMake => {
++            let out = Command::new("ctest")
++                .args(["--output-on-failure"])
++                .stdout(Stdio::piped()).stderr(Stdio::piped())
++                .output()?;
++            let txt = String::from_utf8_lossy(&out.stdout).to_string()
++                + &String::from_utf8_lossy(&out.stderr).to_string();
++            Ok((out.status.code().unwrap_or(-1), txt))
++        }
++        Stack::Unknown => Err(anyhow!("Stack inconnue")),
++    }
++}
+diff --git a/crates/cli/src/main.rs b/crates/cli/src/main.rs
+index 5a6b7c8..a2d3f45 100644
+--- a/crates/cli/src/main.rs
++++ b/crates/cli/src/main.rs
+@@ -3,8 +3,9 @@ use clap::{Parser, Subcommand};
+ use devit_agent::Agent;
+ use devit_common::Config;
+-use devit_tools::git;
++use devit_tools::{git, codeexec};
+ use std::fs;
+ use std::io::{Read, stdin};
+ 
+ #[derive(Parser, Debug)]
+@@ -28,6 +29,10 @@ enum Commands
+     /// Apply a unified diff to the workspace (TODO)
+     Apply
+     {
+         /// Read diff from file, or '-' for stdin (default)
+         #[arg(default_value = "-")] input: String,
+         /// Auto-approve (no prompt)
+         #[arg(long)] yes: bool,
+     },
++
++    /// Run tests according to detected stack (Cargo/npm/CMake)
++    Test,
+ }
+ 
+ #[tokio::main]
+@@ -41,7 +46,7 @@ async fn main() -> Result<()>
+     let cfg: Config = load_cfg("devit.toml").context("load config")?;
+     let agent = Agent::new(cfg.clone());
+ 
+-    match (cli.command, cli.goal) {
++    match (cli.command, cli.goal) {
+         (Some(Commands::Suggest { path }), Some(goal)) =>
+         {
+             let ctx = collect_context(&path)?;
+             let diff = agent.suggest_patch(&goal, &ctx).await?;
+             println!("{}", diff);
+         }
+         (Some(Commands::Apply { input, yes }), goal) =>
+         {
+             ensure_git_repo()?;
+             let patch = read_patch(&input)?;
+             // 1) dry-run
+             if !git::apply_check(&patch)? {
+                 anyhow::bail!("Le patch ne s'applique pas proprement (git apply --check).");
+             }
+             // 2) résumé numstat
+             let ns = git::numstat(&patch)?;
+             let files = ns.len();
+             let added: u64 = ns.iter().map(|e| e.added).sum();
+             let deleted: u64 = ns.iter().map(|e| e.deleted).sum();
+             let summary = format!("{} fichier(s), +{}, -{}", files, added, deleted);
+             // 3) approval (sauf policy 'never' ou --yes)
+             let must_ask = !yes && cfg.policy.approval.to_lowercase() != "never";
+             if must_ask {
+                 eprintln!("Patch prêt: {summary}");
+                 for e in ns.iter().take(10) { eprintln!("  - {}", e.path); }
+                 if ns.len() > 10 { eprintln!("  … ({} autres)", ns.len() - 10); }
+                 if !ask_approval()? { anyhow::bail!("Annulé par l'utilisateur."); }
+             }
+             // 4) apply + commit
+             if !git::apply_index(&patch)? {
+                 anyhow::bail!("Échec git apply --index.");
+             }
+-            let commit_msg = default_commit_msg(goal.as_deref(), &summary);
++            // Génère un titre de commit (LLM si dispo, sinon fallback)
++            let diff_head = patch.lines().take(60).collect::<Vec<_>>().join("\n");
++            let commit_msg = match goal.as_deref() {
++                Some(g) => agent.commit_message(g, &summary, &diff_head).await
++                              .ok().filter(|s| !s.trim().is_empty())
++                              .unwrap_or_else(|| default_commit_msg(Some(g), &summary)),
++                None => default_commit_msg(None, &summary),
++            };
+             if !git::commit(&commit_msg)? {
+                 anyhow::bail!("Échec git commit.");
+             }
+             let sha = git::head_short().unwrap_or_default();
+             println!("✅ Commit {}: {}", sha, commit_msg);
+         }
++        (Some(Commands::Test), _) =>
++        {
++            match codeexec::run_tests_with_output() {
++                Ok((code, out)) => {
++                    println!("{}", out);
++                    if code == 0 { println!("✅ Tests PASS"); }
++                    else { anyhow::bail!("❌ Tests FAIL (exit code {code})"); }
++                }
++                Err(e) => {
++                    anyhow::bail!("Impossible d'exécuter les tests: {e}");
++                }
++            }
++        }
+         _ => {
+             eprintln!("Usage:\n  devit --goal \"...\" suggest [PATH]\n  devit apply [-|PATCH.diff] [--yes]\n  devit test");
+         }
+     }
+ 
+     Ok(())

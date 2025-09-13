@@ -1,0 +1,29 @@
+
+
+# -----------------------------
+# README.md (extrait)
+# -----------------------------
+# DevIt (temp name)
+
+
+Rust CLI agent **patch-only**, sandboxable, interop LLM (OpenAI-like/Ollama).
+
+
+- ⚙️ Patch-only: produit des diffs unifiés, jamais de modifications opaques
+- 🔐 Sandbox et politiques d'approbation (config TOML)
+- 🧠 Backend LLM interchangeable (OpenAI-like/Ollama/llama.cpp)
+
+
+```bash
+cargo run -p devit -- --goal "ajoute un test" suggest .
+```
+
+
+# -----------------------------
+# STARTING PLAN (MVP)
+# -----------------------------
+1) **Backend**: OpenAI-like (Ollama local) – chat completions → diff unifié
+2) **Patch-only**: `suggest` imprime le diff; `apply` (prochain commit) applique
+3) **Context builder** minimal: fichiers .rs + Cargo.toml + README
+4) **Policy** (déclarative) chargée depuis devit.toml (sans enforcement pour MVP)
+5) **Next**: `apply` patch + `git commit` conventionnel + sandbox bwrap/no-net

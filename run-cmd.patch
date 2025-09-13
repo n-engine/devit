@@ -1,0 +1,107 @@
+diff --git a/crates/cli/src/main.rs b/crates/cli/src/main.rs
+index c8d1e21..f2ad0b3 100644
+--- a/crates/cli/src/main.rs
++++ b/crates/cli/src/main.rs
+@@ -4,7 +4,7 @@ use devit_agent::Agent;
+ use devit_common::Config;
+-use devit_tools::{git, codeexec};
++use devit_tools::{git, codeexec};
+ use std::fs;
+ use std::io::{Read, stdin};
+ 
+@@ -22,6 +22,20 @@ enum Commands
+         #[arg(long)] yes: bool,
+         /// Continue even if worktree/index is dirty (try 3-way)
+         #[arg(long)] force: bool,
+     },
+ 
++    /// Chain: suggest -> (approval) -> apply -> commit -> test
++    Run
++    {
++        /// Workspace path (default: current dir)
++        #[arg(default_value = ".")] path: String,
++        /// Auto-approve write/apply
++        #[arg(long)] yes: bool,
++        /// Continue even if worktree/index is dirty (try 3-way)
++        #[arg(long)] force: bool,
++    },
++
+     /// Run tests according to detected stack (Cargo/npm/CMake)
+     Test,
+ }
+@@ -48,7 +62,7 @@ async fn main() -> Result<()>
+     let agent = Agent::new(cfg.clone());
+ 
+     match (cli.command, cli.goal) {
+-        (Some(Commands::Suggest { path }), Some(goal)) =>
++        (Some(Commands::Suggest { path }), Some(goal)) =>
+         {
+             let ctx = collect_context(&path)?;
+             let diff = agent.suggest_patch(&goal, &ctx).await?;
+             println!("{}", diff);
+         }
+@@ -86,6 +100,51 @@ async fn main() -> Result<()>
+             let sha = git::head_short().unwrap_or_default();
+             println!("✅ Commit {}: {}", sha, commit_msg);
+         }
++        (Some(Commands::Run { path, yes, force }), goal) =>
++        {
++            ensure_git_repo()?;
++            let goal = match goal {
++                Some(g) if !g.trim().is_empty() => g,
++                _ => anyhow::bail!("`devit run` nécessite --goal \"...\""),
++            };
++            // 1) suggest
++            let ctx = collect_context(&path)?;
++            let patch = agent.suggest_patch(&goal, &ctx).await?;
++            if patch.trim().is_empty() {
++                anyhow::bail!("Le backend n'a pas produit de diff.");
++            }
++            // 2) index propre ?
++            if !git::is_worktree_clean() && !force {
++                anyhow::bail!(
++                    "Le worktree ou l'index contient des modifications.\n\
++                     - Commit/stash tes changements OU relance avec --force (tentative 3-way)."
++                );
++            }
++            // 3) dry-run + résumé
++            git::apply_check(&patch)?;
++            let ns = git::numstat(&patch)?;
++            let files = ns.len();
++            let added: u64 = ns.iter().map(|e| e.added).sum();
++            let deleted: u64 = ns.iter().map(|e| e.deleted).sum();
++            let summary = format!("{} fichier(s), +{}, -{}", files, added, deleted);
++            if !(yes || cfg.policy.approval.to_lowercase() == "never") {
++                eprintln!("Patch prêt (RUN): {summary}");
++                for e in ns.iter().take(10) { eprintln!("  - {}", e.path); }
++                if ns.len() > 10 { eprintln!("  … ({} autres)", ns.len() - 10); }
++                if !ask_approval()? { anyhow::bail!("Annulé par l'utilisateur."); }
++            }
++            // 4) apply + commit
++            if !git::apply_index(&patch)? {
++                anyhow::bail!("Échec git apply --index (et fallback --3way).");
++            }
++            let diff_head = patch.lines().take(60).collect::<Vec<_>>().join("\n");
++            let commit_msg = agent.commit_message(&goal, &summary, &diff_head).await
++                .ok().filter(|s| !s.trim().is_empty())
++                .unwrap_or_else(|| default_commit_msg(Some(&goal), &summary));
++            if !git::commit(&commit_msg)? { anyhow::bail!("Échec git commit."); }
++            let sha = git::head_short().unwrap_or_default();
++            println!("✅ Commit {}: {}", sha, commit_msg);
++            // 5) tests
++            let (code, out) = codeexec::run_tests_with_output()?;
++            println!("{}", out);
++            if code == 0 { println!("✅ Tests PASS"); } else { anyhow::bail!("❌ Tests FAIL (exit code {code})"); }
++        }
+         (Some(Commands::Test), _) =>
+         {
+             match codeexec::run_tests_with_output() {
+@@ -101,7 +160,7 @@ async fn main() -> Result<()>
+             }
+         }
+         _ => {
+-            eprintln!("Usage:\n  devit --goal \"...\" suggest [PATH]\n  devit apply [-|PATCH.diff] [--yes]\n  devit test");
++            eprintln!("Usage:\n  devit --goal \"...\" suggest [PATH]\n  devit apply [-|PATCH.diff] [--yes] [--force]\n  devit run --goal \"...\" [PATH] [--yes] [--force]\n  devit test");
+         }
+     }
+ 

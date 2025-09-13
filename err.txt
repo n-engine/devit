@@ -1,0 +1,1 @@
+Error: pas dans un dépôt git (git rev-parse --is-inside-work-tree).
