@@ -80,6 +80,19 @@ fn fs_patch_apply_check_only_succeeds() {
         .status()
         .unwrap()
         .success());
+    // Configure local identity for CI environments lacking global config
+    assert!(Command::new("git")
+        .current_dir(&d)
+        .args(["config", "user.email", "ci@example.invalid"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .current_dir(&d)
+        .args(["config", "user.name", "CI Runner"])
+        .status()
+        .unwrap()
+        .success());
     fs::write(d.join("f.txt"), "one\n").unwrap();
     assert!(Command::new("git")
         .current_dir(&d)
