@@ -433,15 +433,15 @@ fn audit_done(opts: &AuditOpts, tool: &str, ok: bool, dur_ms: u128, err: Option<
     }
     let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let base = if let Some(e) = err {
+        let error_json = serde_json::to_string(e).unwrap();
+        let auto_yes = opts.auto_yes;
         format!(
-            r#"{{"ts":"{ts}","tool":"{tool}","phase":"done","ok":{ok},"duration_ms":{dur_ms},"error":{},"policy":"n/a","auto_yes":{}}}"#,
-            serde_json::to_string(e).unwrap(),
-            opts.auto_yes
+            r#"{{"ts":"{ts}","tool":"{tool}","phase":"done","ok":{ok},"duration_ms":{dur_ms},"error":{error_json},"policy":"n/a","auto_yes":{auto_yes}}}"#,
         )
     } else {
+        let auto_yes = opts.auto_yes;
         format!(
-            r#"{{"ts":"{ts}","tool":"{tool}","phase":"done","ok":{ok},"duration_ms":{dur_ms},"policy":"n/a","auto_yes":{}}}"#,
-            opts.auto_yes
+            r#"{{"ts":"{ts}","tool":"{tool}","phase":"done","ok":{ok},"duration_ms":{dur_ms},"policy":"n/a","auto_yes":{auto_yes}}}"#,
         )
     };
     append_signed(
