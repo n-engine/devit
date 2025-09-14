@@ -219,7 +219,7 @@ fn is_binary_quick(path: &Path) -> Result<bool> {
     // try mmap
     if let Ok(file) = fs::File::open(path) {
         if let Ok(m) = unsafe { MmapOptions::new().len(1024 * 16).map(&file) } {
-            if m.iter().any(|&b| b == 0) {
+            if m.contains(&0) {
                 return Ok(true);
             }
             return Ok(false);
@@ -229,7 +229,7 @@ fn is_binary_quick(path: &Path) -> Result<bool> {
     let mut f = fs::File::open(path)?;
     let mut buf = [0u8; 8192];
     let n = f.read(&mut buf).unwrap_or(0);
-    Ok(buf[..n].iter().any(|&b| b == 0))
+    Ok(buf[..n].contains(&0))
 }
 
 fn detect_lang(p: &str) -> String {
@@ -305,7 +305,7 @@ fn count_symbols(path: &Path, lang: &str) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
+    use std::io::Write;
     use tempfile::tempdir;
 
     #[test]

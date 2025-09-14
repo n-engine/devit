@@ -542,10 +542,7 @@ fn build_context_index_adv(
     }
 }
 
-fn should_skip(path: &str) -> bool {
-    let skip_prefixes = [".git/", "target/", ".devit/", "bench/"];
-    skip_prefixes.iter().any(|p| path.starts_with(p))
-}
+// legacy helper removed; scanning now handled in context module
 
 fn tool_call_json(
     cfg: &Config,
