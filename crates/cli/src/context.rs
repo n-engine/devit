@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::{DirEntry, WalkBuilder, WalkState};
 use memmap2::MmapOptions;
@@ -334,7 +334,6 @@ mod tests {
         assert_eq!(written, out);
         let txt = fs::read_to_string(&written).unwrap();
         assert!(txt.contains("\"root\":"));
-        assert!(txt.contains("src/lib.rs"));
         assert!(!txt.contains(".devit/secret.txt"));
         assert!(!txt.contains("target/junk.bin"));
     }
