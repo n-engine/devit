@@ -30,6 +30,9 @@ struct Cli {
     /// Config path for approval policies (default: .devit/devit.toml)
     #[arg(long = "config")]
     config_path: Option<PathBuf>,
+    /// Affiche la politique effective (JSON) puis quitte
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    policy_dump: bool,
 }
 
 fn main() {
@@ -46,6 +49,13 @@ fn real_main() -> Result<()> {
     let mut lines = stdin.lock().lines();
     let timeout = timeout_from_cli_env(cli.timeout_secs);
     let policies = load_policies(cli.config_path.as_ref()).unwrap_or_default();
+
+    // --policy-dump: print effective approvals JSON and exit
+    if cli.policy_dump {
+        let v = policy_dump_json(cli.config_path.as_deref().map(|p| p as &std::path::Path));
+        println!("{}", serde_json::to_string_pretty(&v)?);
+        return Ok(());
+    }
 
     while let Some(line) = lines.next() {
         let line = line?;
@@ -319,6 +329,41 @@ fn default_policy_for(tool: &str) -> String {
         "echo" => "never".to_string(),
         _ => "on_request".to_string(),
     }
+}
+
+// --- helper de dump de politique (JSON) ---
+pub fn policy_dump_json(config_path: Option<&std::path::Path>) -> serde_json::Value {
+    use std::collections::BTreeMap;
+
+    // on réutilise la logique existante
+    let cfg = match config_path {
+        Some(p) => load_policies(Some(&p.to_path_buf())).unwrap_or_else(|_| default_policies()),
+        None => default_policies(),
+    };
+
+    // defaults visibles par le superviseur
+    let mut tools: BTreeMap<String, String> = BTreeMap::from([
+        ("devit.tool_list".to_string(), "never".to_string()),
+        ("devit.tool_call".to_string(), "on_request".to_string()),
+        ("plugin.invoke".to_string(), "on_request".to_string()),
+        ("echo".to_string(), "never".to_string()),
+    ]);
+
+    // merge avec la map interne
+    for k in ["devit.tool_list", "devit.tool_call", "plugin.invoke", "echo"] {
+        let eff = cfg
+            .0
+            .get(k)
+            .cloned()
+            .unwrap_or_else(|| default_policy_for(k));
+        tools.insert(k.to_string(), eff);
+    }
+
+    // expose aussi un “wildcard” par défaut
+    serde_json::json!({
+        "default": "on_request",
+        "tools": tools
+    })
 }
 
 fn run_devit_list(bin: &PathBuf, timeout: Duration) -> Result<Value> {
