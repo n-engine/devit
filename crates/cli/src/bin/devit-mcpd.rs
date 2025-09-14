@@ -95,7 +95,7 @@ fn real_main() -> Result<()> {
                     .cloned()
                     .unwrap_or_else(|| default_policy_for(name));
                 // on_request/untrusted: require approval before running
-                if matches!(policy.as_str(), "on_request" | "untrusted") && !cli.yes {
+                if (policy == "on_request" || policy == "untrusted") && !cli.yes {
                     writeln!(
                         stdout,
                         "{}",
@@ -171,14 +171,31 @@ fn real_main() -> Result<()> {
                         let args_json = payload.get("args").cloned().unwrap_or(json!({}));
                         match run_devit_call(&bin, &args_json, timeout) {
                             Ok(out) => {
-                                writeln!(
-                                    stdout,
-                                    "{}",
-                                    json!({
-                                        "type": "tool.result",
-                                        "payload": {"name": name, "result": out}
-                                    })
-                                )?;
+                                // on_failure: if DevIt reports ok=false, require approval (post)
+                                let is_fail = out
+                                    .get("ok")
+                                    .and_then(|v| v.as_bool())
+                                    .map(|b| !b)
+                                    .unwrap_or(false);
+                                if policy == "on_failure" && is_fail && !cli.yes {
+                                    writeln!(
+                                        stdout,
+                                        "{}",
+                                        json!({
+                                            "type": "tool.error",
+                                            "payload": {"approval_required": true, "policy": policy, "phase": "post"}
+                                        })
+                                    )?;
+                                } else {
+                                    writeln!(
+                                        stdout,
+                                        "{}",
+                                        json!({
+                                            "type": "tool.result",
+                                            "payload": {"name": name, "result": out}
+                                        })
+                                    )?;
+                                }
                             }
                             Err(e) => {
                                 if policy == "on_failure" && !cli.yes {
