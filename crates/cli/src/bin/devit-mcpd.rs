@@ -79,7 +79,11 @@ fn real_main() -> Result<()> {
         return Ok(());
     }
 
-    let mut rl = RateLimiter::new(Limits { max_calls_per_min: 60, max_json_kb: 256, cooldown: Duration::from_millis(250) });
+    let mut rl = RateLimiter::new(Limits {
+        max_calls_per_min: 60,
+        max_json_kb: 256,
+        cooldown: Duration::from_millis(250),
+    });
     while let Some(line) = lines.next() {
         let line = line?;
         if line.trim().is_empty() {
@@ -202,7 +206,12 @@ fn real_main() -> Result<()> {
                             }
                         }
                         let start = Instant::now();
-                        let v = policy_effective_json(&audit, &policies, &rl.limits, &cli.server_version);
+                        let v = policy_effective_json(
+                            &audit,
+                            &policies,
+                            &rl.limits,
+                            &cli.server_version,
+                        );
                         let dur = start.elapsed().as_millis();
                         audit_done(&audit, tool_key, true, dur, None);
                         writeln!(
