@@ -1,6 +1,9 @@
-use std::fs::{self, File};
+use std::env;
+use std::ffi::OsStr;
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
@@ -15,8 +18,9 @@ use ratatui::backend::{Backend, CrosstermBackend, TestBackend};
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Terminal;
+use serde::Deserialize;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "devit-tui", version, about = "DevIt TUI: timeline + statusbar")]
@@ -36,30 +40,46 @@ struct Args {
     /// Open a journal log (path or '-' for stdin)
     #[arg(long = "open-log", value_name = "PATH")]
     open_log: Option<PathBuf>,
+
+    /// Select the Nth event from the end (0 = last)
+    #[arg(long = "seek-last", value_name = "N")]
+    seek_last: Option<usize>,
+
+    /// List available recipes as JSON (headless helper)
+    #[arg(long = "list-recipes", default_value_t = false)]
+    list_recipes: bool,
 }
 
-#[derive(Default)]
 struct App {
     lines: Vec<String>,
     selected: usize,
     follow: bool,
     journal_path: Option<PathBuf>,
     last_size: u64,
+    base_status: String,
     status: String,
     help: bool,
     diff: Option<DiffState>,
+    recipes: RecipeState,
 }
 
 impl App {
-    fn new(journal_path: Option<PathBuf>, follow: bool) -> Self {
+    fn new(journal_path: Option<PathBuf>, follow: bool, base_status: String) -> Self {
         Self {
-            journal_path,
+            lines: Vec::new(),
+            selected: 0,
             follow,
-            ..Default::default()
+            journal_path,
+            last_size: 0,
+            status: base_status.clone(),
+            base_status,
+            help: false,
+            diff: None,
+            recipes: RecipeState::default(),
         }
     }
 
-    fn load_initial(&mut self) -> Result<()> {
+    fn load_initial(&mut self, seek_last: Option<usize>) -> Result<()> {
         let Some(p) = &self.journal_path else {
             return Ok(());
         };
@@ -71,9 +91,9 @@ impl App {
         reader.read_to_string(&mut buf)?;
         self.lines = buf.lines().map(|s| s.to_string()).collect();
         self.last_size = meta.len();
-        if self.selected >= self.lines.len() {
-            self.selected = self.lines.len().saturating_sub(1);
-        }
+        self.select_from_end(seek_last);
+        self.ensure_selection_in_bounds();
+        self.refresh_status();
         Ok(())
     }
 
@@ -99,9 +119,596 @@ impl App {
                     self.lines.push(line);
                 }
                 self.last_size = meta.len();
+                if self.follow {
+                    self.select_from_end(Some(0));
+                } else {
+                    self.ensure_selection_in_bounds();
+                }
+                self.refresh_status();
             }
         }
     }
+
+    fn select_from_end(&mut self, seek_last: Option<usize>) {
+        if self.lines.is_empty() {
+            self.selected = 0;
+            return;
+        }
+        let len = self.lines.len();
+        let offset = seek_last.unwrap_or(0).min(len.saturating_sub(1));
+        self.selected = len - 1 - offset;
+    }
+
+    fn ensure_selection_in_bounds(&mut self) {
+        if self.lines.is_empty() {
+            self.selected = 0;
+        } else if self.selected >= self.lines.len() {
+            self.selected = self.lines.len() - 1;
+        }
+    }
+
+    fn refresh_status(&mut self) {
+        if self.diff.is_some() {
+            if let Some(diff) = self.diff.as_ref() {
+                self.status = diff.status_line();
+            }
+            return;
+        }
+        if self.recipes.visible {
+            let recipes_status = self.recipes.status_line();
+            if let Some(info) = recipes_status {
+                self.status = format!("{} | {}", self.base_status, info);
+            } else {
+                self.status = format!(
+                    "{} | Recipes ({} entries)",
+                    self.base_status,
+                    self.recipes.entries.len()
+                );
+            }
+            return;
+        }
+        if self.lines.is_empty() {
+            self.status = self.base_status.clone();
+        } else {
+            let position = self.selected.min(self.lines.len() - 1) + 1;
+            self.status = format!(
+                "{} | Event {}/{}",
+                self.base_status,
+                position,
+                self.lines.len()
+            );
+        }
+    }
+
+    fn selected_line(&self) -> Option<&str> {
+        self.lines.get(self.selected).map(String::as_str)
+    }
+
+    fn event_detail_text(&self) -> String {
+        let Some(line) = self.selected_line() else {
+            return "No events loaded".into();
+        };
+        match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(json) => serde_json::to_string_pretty(&json).unwrap_or_else(|_| line.to_string()),
+            Err(_) => line.to_string(),
+        }
+    }
+
+    fn selected_display_index(&self) -> Option<usize> {
+        if self.lines.is_empty() {
+            None
+        } else {
+            let idx = self.selected.min(self.lines.len() - 1);
+            Some(self.lines.len() - 1 - idx)
+        }
+    }
+
+    fn headless_output(&self) -> String {
+        if self.lines.is_empty() {
+            "No events loaded".to_string()
+        } else {
+            self.event_detail_text()
+        }
+    }
+
+    fn toggle_recipes(&mut self) {
+        if self.recipes.visible {
+            self.recipes.visible = false;
+            self.recipes.info = None;
+            self.recipes.error = None;
+            self.refresh_status();
+            return;
+        }
+        match fetch_recipe_entries() {
+            Ok(entries) => {
+                self.recipes.visible = true;
+                self.recipes.entries = entries;
+                self.recipes.selected = 0;
+                self.recipes.output.clear();
+                self.recipes.error = None;
+                self.recipes.diff_path = None;
+                self.recipes.mode = RecipeMode::Idle;
+                if self.recipes.entries.is_empty() {
+                    self.recipes.info = Some("No recipes available".to_string());
+                } else {
+                    self.recipes.info = Some(
+                        "Select a recipe and press Enter for dry-run (O diff, A apply)".to_string(),
+                    );
+                }
+                self.refresh_status();
+            }
+            Err(err) => {
+                self.recipes.visible = true;
+                self.recipes.entries.clear();
+                self.recipes.output = vec![format!("devit recipe list failed: {}", err)];
+                self.recipes.error = Some("Recipe list failed".to_string());
+                self.recipes.info = None;
+                self.recipes.diff_path = None;
+                self.recipes.mode = RecipeMode::Idle;
+                self.refresh_status();
+            }
+        }
+    }
+
+    fn handle_recipe_key(&mut self, key: KeyCode) -> bool {
+        if !self.recipes.visible {
+            return false;
+        }
+        match key {
+            KeyCode::Esc | KeyCode::Char('r') | KeyCode::Char('R') => {
+                self.recipes.visible = false;
+                self.refresh_status();
+                true
+            }
+            KeyCode::Up => {
+                if self.recipes.selected > 0 {
+                    self.recipes.selected -= 1;
+                }
+                if let Some(entry) = self.recipes.selected_entry() {
+                    self.recipes.info = Some(format!("Selected {}", entry.name));
+                }
+                self.refresh_status();
+                true
+            }
+            KeyCode::Down => {
+                if !self.recipes.entries.is_empty() {
+                    let max = self.recipes.entries.len() - 1;
+                    self.recipes.selected = (self.recipes.selected + 1).min(max);
+                }
+                if let Some(entry) = self.recipes.selected_entry() {
+                    self.recipes.info = Some(format!("Selected {}", entry.name));
+                }
+                self.refresh_status();
+                true
+            }
+            KeyCode::Enter => {
+                self.run_recipe_dry_run();
+                true
+            }
+            KeyCode::Char('o') | KeyCode::Char('O') => {
+                self.open_recipe_diff();
+                true
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') => {
+                self.apply_recipe();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn run_recipe_dry_run(&mut self) {
+        let Some(entry) = self.recipes.selected_entry().cloned() else {
+            self.recipes.info = Some("No recipe selected".to_string());
+            self.refresh_status();
+            return;
+        };
+        let id = entry.id.clone();
+        let args = ["recipe", "run", id.as_str(), "--dry-run"];
+        match run_devit_command(args) {
+            Ok(output) => {
+                self.recipes.output = collect_output_lines(&output);
+                self.recipes.error = None;
+                self.recipes.diff_path = detect_diff_path(&output);
+                if output.success() {
+                    self.recipes.mode = RecipeMode::DryRunReady { id: id.clone() };
+                    if self.recipes.diff_path.is_some() {
+                        self.recipes.info = Some(format!(
+                            "Dry-run ready for {} (O diff, A apply)",
+                            entry.name
+                        ));
+                    } else {
+                        self.recipes.info = Some(format!(
+                            "Dry-run ready for {} (no diff reported)",
+                            entry.name
+                        ));
+                    }
+                } else {
+                    self.recipes.mode = RecipeMode::Idle;
+                    if let Some(info) = detect_approval_required(&output) {
+                        self.recipes.error = Some("Dry-run requires approval".to_string());
+                        let _ = append_approval_notice(&entry.id, &info);
+                    } else {
+                        self.recipes.error = Some(format!(
+                            "Dry-run failed (exit {})",
+                            output.status.code().unwrap_or(-1)
+                        ));
+                    }
+                }
+            }
+            Err(err) => {
+                self.recipes.output = vec![format!("Failed to run devit: {}", err)];
+                self.recipes.error = Some("Dry-run failed".to_string());
+                self.recipes.mode = RecipeMode::Idle;
+            }
+        }
+        self.refresh_status();
+    }
+
+    fn open_recipe_diff(&mut self) {
+        let id = match &self.recipes.mode {
+            RecipeMode::DryRunReady { id } => id.clone(),
+            RecipeMode::Applying { id } => id.clone(),
+            RecipeMode::Idle => {
+                self.recipes.info = Some("Run dry-run before opening diff".to_string());
+                self.refresh_status();
+                return;
+            }
+        };
+        let Some(path) = self.recipes.diff_path.clone() else {
+            self.recipes.info = Some("Dry-run did not provide a diff".to_string());
+            self.refresh_status();
+            return;
+        };
+        match load_diff(&path, DiffSource::Path, 1_048_576) {
+            Ok(diff_state) => {
+                let status_line = diff_state.status_line();
+                self.status = status_line;
+                self.diff = Some(diff_state);
+                self.recipes.visible = false;
+                self.recipes.info = Some(format!("Diff opened for recipe {}", id));
+            }
+            Err(err) => {
+                let msg = match err {
+                    DiffError::NotFound => "diff file not found".to_string(),
+                    DiffError::TooLarge => "diff too large".to_string(),
+                    DiffError::Parse(e) => format!("diff parse error: {}", e),
+                };
+                self.recipes.error = Some(msg);
+            }
+        }
+        self.refresh_status();
+    }
+
+    fn apply_recipe(&mut self) {
+        let id = match &self.recipes.mode {
+            RecipeMode::DryRunReady { id } => id.clone(),
+            RecipeMode::Applying { id } => id.clone(),
+            RecipeMode::Idle => {
+                self.recipes.info = Some("Run dry-run before applying".to_string());
+                self.refresh_status();
+                return;
+            }
+        };
+        self.recipes.mode = RecipeMode::Applying { id: id.clone() };
+        self.recipes.info = Some(format!("Applying recipe {}...", id));
+        self.refresh_status();
+        let args = ["recipe", "run", id.as_str()];
+        match run_devit_command(args) {
+            Ok(output) => {
+                self.recipes.output = collect_output_lines(&output);
+                if output.success() {
+                    self.recipes.mode = RecipeMode::Idle;
+                    self.recipes.error = None;
+                    self.recipes.info = Some(format!("Recipe '{}' applied", id));
+                    self.recipes.diff_path = None;
+                    self.diff = None;
+                } else if let Some(info) = detect_approval_required(&output) {
+                    self.recipes.mode = RecipeMode::DryRunReady { id: id.clone() };
+                    self.recipes.error = Some("Approval required before applying".to_string());
+                    let _ = append_approval_notice(&id, &info);
+                } else {
+                    self.recipes.mode = RecipeMode::DryRunReady { id: id.clone() };
+                    self.recipes.error = Some(format!(
+                        "Recipe apply failed (exit {})",
+                        output.status.code().unwrap_or(-1)
+                    ));
+                }
+            }
+            Err(err) => {
+                self.recipes.error = Some(format!("Failed to run devit: {}", err));
+                self.recipes.mode = RecipeMode::DryRunReady { id };
+            }
+        }
+        self.refresh_status();
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RecipeEntry {
+    id: String,
+    name: String,
+    description: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct RecipeState {
+    visible: bool,
+    entries: Vec<RecipeEntry>,
+    selected: usize,
+    output: Vec<String>,
+    info: Option<String>,
+    error: Option<String>,
+    diff_path: Option<PathBuf>,
+    mode: RecipeMode,
+}
+
+#[derive(Debug, Clone)]
+enum RecipeMode {
+    Idle,
+    DryRunReady { id: String },
+    Applying { id: String },
+}
+
+impl Default for RecipeMode {
+    fn default() -> Self {
+        RecipeMode::Idle
+    }
+}
+
+impl RecipeState {
+    fn status_line(&self) -> Option<String> {
+        if let Some(err) = &self.error {
+            return Some(format!("Recipe error: {}", err));
+        }
+        if let Some(info) = &self.info {
+            return Some(info.clone());
+        }
+        match &self.mode {
+            RecipeMode::Idle => None,
+            RecipeMode::DryRunReady { id } => Some(format!(
+                "Recipe '{}' ready: Enter=run again, O=open diff, A=apply",
+                id
+            )),
+            RecipeMode::Applying { id } => Some(format!("Applying recipe '{}'", id)),
+        }
+    }
+
+    fn selected_entry(&self) -> Option<&RecipeEntry> {
+        self.entries.get(self.selected)
+    }
+}
+
+#[derive(Debug)]
+struct CommandOutput {
+    status: std::process::ExitStatus,
+    stdout: String,
+    stderr: String,
+}
+
+impl CommandOutput {
+    fn success(&self) -> bool {
+        self.status.success()
+    }
+}
+
+#[derive(Debug)]
+struct ApprovalInfo {
+    tool: Option<String>,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RecipeListResponse {
+    recipes: Vec<RecipeEntry>,
+}
+
+fn resolve_devit_bin() -> PathBuf {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    for var in ["DEVIT_TUI_DEVIT_BIN", "DEVIT_BIN", "DEVIT_CLI_BIN"] {
+        if let Ok(value) = env::var(var) {
+            if !value.trim().is_empty() {
+                candidates.push(PathBuf::from(value));
+            }
+        }
+    }
+
+    if let Ok(current) = env::current_exe() {
+        if let Some(parent) = current.parent() {
+            candidates.push(parent.join("devit"));
+            candidates
+                .push(parent.join(format!("devit{}", if cfg!(windows) { ".exe" } else { "" })));
+            if let Some(root) = parent.parent() {
+                candidates.push(root.join("release").join("devit"));
+                candidates.push(
+                    root.join("release")
+                        .join(format!("devit{}", if cfg!(windows) { ".exe" } else { "" })),
+                );
+            }
+        }
+    }
+
+    candidates.push(PathBuf::from(if cfg!(windows) {
+        "devit.exe"
+    } else {
+        "devit"
+    }));
+
+    for candidate in &candidates {
+        if candidate.is_absolute() || candidate.components().count() > 1 {
+            if candidate.exists() {
+                return candidate.clone();
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .last()
+        .unwrap_or_else(|| PathBuf::from("devit"))
+}
+
+fn run_devit_command<I, S>(args: I) -> Result<CommandOutput>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let bin = resolve_devit_bin();
+    let output = Command::new(&bin)
+        .args(args)
+        .output()
+        .with_context(|| format!("spawn devit command {:?}", bin))?;
+    Ok(CommandOutput {
+        status: output.status,
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    })
+}
+
+fn fetch_recipe_entries() -> Result<Vec<RecipeEntry>> {
+    let output = run_devit_command(["recipe", "list"])?;
+    if !output.success() {
+        bail!("devit recipe list failed: {}", output.stderr.trim());
+    }
+    let parsed: RecipeListResponse =
+        serde_json::from_str(output.stdout.trim()).context("parse devit recipe list output")?;
+    Ok(parsed.recipes)
+}
+
+fn list_recipes_headless() -> Result<()> {
+    let output = run_devit_command(["recipe", "list"])?;
+    if !output.success() {
+        if !output.stderr.trim().is_empty() {
+            eprintln!("{}", output.stderr.trim());
+        }
+        bail!(
+            "devit recipe list exited with status {}",
+            output.status.code().unwrap_or(-1)
+        );
+    }
+    print!("{}", output.stdout);
+    Ok(())
+}
+
+fn collect_output_lines(output: &CommandOutput) -> Vec<String> {
+    let mut lines = Vec::new();
+    if !output.stdout.trim().is_empty() {
+        lines.extend(output.stdout.lines().map(|s| s.to_string()));
+    }
+    if !output.stderr.trim().is_empty() {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push("stderr:".to_string());
+        lines.extend(output.stderr.lines().map(|s| s.to_string()));
+    }
+    if lines.is_empty() {
+        lines.push("(no output)".to_string());
+    }
+    lines
+}
+
+fn detect_diff_path(output: &CommandOutput) -> Option<PathBuf> {
+    for line in output.stdout.lines().chain(output.stderr.lines()) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(path) = extract_diff_path(&value) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+fn extract_diff_path(value: &serde_json::Value) -> Option<PathBuf> {
+    let mut candidates: Vec<Option<&str>> = Vec::new();
+    candidates.push(value.get("diff_path").and_then(|v| v.as_str()));
+    candidates.push(value.get("patch_path").and_then(|v| v.as_str()));
+    if let Some(payload) = value.get("payload") {
+        candidates.push(payload.get("diff_path").and_then(|v| v.as_str()));
+        candidates.push(payload.get("patch_path").and_then(|v| v.as_str()));
+    }
+    if let Some(recipe) = value.get("recipe") {
+        candidates.push(recipe.get("diff_path").and_then(|v| v.as_str()));
+        candidates.push(recipe.get("patch_path").and_then(|v| v.as_str()));
+    }
+    for candidate in candidates.into_iter().flatten() {
+        if !candidate.trim().is_empty() {
+            return Some(PathBuf::from(candidate));
+        }
+    }
+    None
+}
+
+fn detect_approval_required(output: &CommandOutput) -> Option<ApprovalInfo> {
+    for line in output.stdout.lines().chain(output.stderr.lines()) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(info) = approval_info_from_value(&value) {
+                return Some(info);
+            }
+        }
+    }
+    None
+}
+
+fn approval_info_from_value(value: &serde_json::Value) -> Option<ApprovalInfo> {
+    if value
+        .get("approval_required")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return Some(ApprovalInfo {
+            tool: value
+                .get("tool")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            reason: value
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+        });
+    }
+    if let Some(payload) = value.get("payload") {
+        if payload
+            .get("approval_required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return Some(ApprovalInfo {
+                tool: payload
+                    .get("tool")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                reason: payload
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            });
+        }
+    }
+    None
+}
+
+fn append_approval_notice(recipe_id: &str, info: &ApprovalInfo) -> Result<()> {
+    let payload = serde_json::json!({
+        "type": "tui.notice",
+        "payload": {
+            "approval_required": true,
+            "recipe": recipe_id,
+            "tool": info.tool,
+            "reason": info.reason,
+        }
+    });
+    let path = Path::new(".devit").join("journal.jsonl");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .context("open journal for approval notice")?;
+    writeln!(file, "{}", payload).context("write approval notice to journal")?;
+    Ok(())
 }
 
 fn print_tool_error_journal_not_found(path: &PathBuf) {
@@ -179,6 +786,11 @@ fn main() -> Result<()> {
 }
 
 fn run(args: Args) -> Result<()> {
+    if args.list_recipes {
+        list_recipes_headless()?;
+        return Ok(());
+    }
+
     let journal_path = args.open_log.clone().or_else(|| args.journal_path.clone());
 
     if journal_path.is_none() && args.open_target.is_none() {
@@ -195,9 +807,9 @@ fn run(args: Args) -> Result<()> {
     let headless = headless_mode();
     let initial_follow = if headless { false } else { args.follow };
 
-    let mut app = App::new(journal_path.clone(), initial_follow);
-    app.status = best_effort_status();
-    app.load_initial()?;
+    let base_status = best_effort_status();
+    let mut app = App::new(journal_path.clone(), initial_follow, base_status);
+    app.load_initial(args.seek_last)?;
 
     if let Some(open_diff) = args.open_target.as_ref() {
         let source = if open_diff.as_os_str() == "-" {
@@ -208,6 +820,7 @@ fn run(args: Args) -> Result<()> {
         match load_diff(open_diff, source, 1_048_576) {
             Ok(diff_state) => {
                 app.status = diff_state.status_line();
+                app.base_status = app.status.clone();
                 app.diff = Some(diff_state);
                 app.follow = false;
             }
@@ -238,7 +851,11 @@ fn run(args: Args) -> Result<()> {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend)?;
         let mut control = LoopControl::headless();
-        return run_app(&mut terminal, &mut app, &mut control);
+        let result = run_app(&mut terminal, &mut app, &mut control);
+        if result.is_ok() {
+            println!("{}", app.headless_output());
+        }
+        return result;
     }
 
     let mut control = LoopControl::interactive(initial_follow)?;
@@ -485,65 +1102,108 @@ fn run_app<B: Backend>(
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => break Ok(()),
-                        _ => {
-                            if let Some(diff) = app.diff.as_mut() {
-                                let mut updated = false;
-                                match key.code {
-                                    KeyCode::Char('j') | KeyCode::Char('J') | KeyCode::Down => {
-                                        if diff.next_hunk() {
-                                            updated = true;
-                                        }
-                                    }
-                                    KeyCode::Char('k') | KeyCode::Char('K') | KeyCode::Up => {
-                                        if diff.prev_hunk() {
-                                            updated = true;
-                                        }
-                                    }
-                                    KeyCode::Char('h') => {
-                                        if diff.prev_file() {
-                                            updated = true;
-                                        }
-                                    }
-                                    KeyCode::Char('H') => {
-                                        if diff.next_file() {
-                                            updated = true;
-                                        }
-                                    }
-                                    KeyCode::F(1) => app.help = !app.help,
-                                    _ => {}
-                                }
-                                if updated {
-                                    app.status = diff.status_line();
-                                }
-                                continue 'main;
-                            } else {
-                                match key.code {
-                                    KeyCode::Char('f') => {
-                                        app.follow = !app.follow;
-                                        if app.follow {
-                                            control.ensure_follow_stop()?;
-                                        }
-                                    }
-                                    KeyCode::Up => {
-                                        app.selected = app.selected.saturating_sub(1);
-                                    }
-                                    KeyCode::Down => {
-                                        app.selected = app
-                                            .selected
-                                            .saturating_add(1)
-                                            .min(app.lines.len().saturating_sub(1));
-                                    }
-                                    KeyCode::Char('/') => {
-                                        app.status =
-                                            format!("search: not implemented | {}", app.status);
-                                    }
-                                    KeyCode::F(1) => app.help = !app.help,
-                                    _ => {}
+                    if matches!(key.code, KeyCode::Char('q')) {
+                        break Ok(());
+                    }
+
+                    if app.recipes.visible && app.handle_recipe_key(key.code) {
+                        continue 'main;
+                    }
+
+                    if let Some(diff) = app.diff.as_mut() {
+                        let mut updated = false;
+                        match key.code {
+                            KeyCode::Char('j') | KeyCode::Char('J') | KeyCode::Down => {
+                                if diff.next_hunk() {
+                                    updated = true;
                                 }
                             }
+                            KeyCode::Char('k') | KeyCode::Char('K') | KeyCode::Up => {
+                                if diff.prev_hunk() {
+                                    updated = true;
+                                }
+                            }
+                            KeyCode::Char('h') => {
+                                if diff.prev_file() {
+                                    updated = true;
+                                }
+                            }
+                            KeyCode::Char('H') => {
+                                if diff.next_file() {
+                                    updated = true;
+                                }
+                            }
+                            KeyCode::Char('a') | KeyCode::Char('A') => {
+                                if matches!(app.recipes.mode, RecipeMode::DryRunReady { .. }) {
+                                    app.apply_recipe();
+                                    if app.diff.is_some() {
+                                        app.diff = None;
+                                    }
+                                }
+                            }
+                            KeyCode::Char('r') | KeyCode::Char('R') => {
+                                app.diff = None;
+                                app.toggle_recipes();
+                            }
+                            KeyCode::Esc => {
+                                app.diff = None;
+                                app.refresh_status();
+                            }
+                            KeyCode::F(1) => app.help = !app.help,
+                            _ => {}
                         }
+                        if let Some(diff) = app.diff.as_ref() {
+                            if updated {
+                                app.status = diff.status_line();
+                            }
+                        } else {
+                            app.refresh_status();
+                        }
+                        continue 'main;
+                    }
+
+                    match key.code {
+                        KeyCode::Char('r') | KeyCode::Char('R') => {
+                            app.toggle_recipes();
+                            continue 'main;
+                        }
+                        KeyCode::Char('a') | KeyCode::Char('A') => {
+                            if matches!(app.recipes.mode, RecipeMode::DryRunReady { .. }) {
+                                app.apply_recipe();
+                            }
+                        }
+                        KeyCode::Char('f') => {
+                            app.follow = !app.follow;
+                            if app.follow {
+                                control.ensure_follow_stop()?;
+                                app.select_from_end(Some(0));
+                            }
+                            app.refresh_status();
+                        }
+                        KeyCode::Up => {
+                            let prev = app.selected;
+                            if app.selected > 0 {
+                                app.selected -= 1;
+                            }
+                            if app.selected != prev {
+                                app.refresh_status();
+                            }
+                        }
+                        KeyCode::Down => {
+                            let prev = app.selected;
+                            if !app.lines.is_empty() {
+                                let max = app.lines.len() - 1;
+                                app.selected = (app.selected + 1).min(max);
+                            }
+                            if app.selected != prev {
+                                app.refresh_status();
+                            }
+                        }
+                        KeyCode::Char('/') => {
+                            app.status = format!("search: not implemented | {}", app.status);
+                        }
+                        KeyCode::F(1) => app.help = !app.help,
+                        _ => {}
                     }
                 }
             }
@@ -578,9 +1238,16 @@ fn draw_frame<B: Backend>(terminal: &mut Terminal<B>, app: &App) -> Result<()> {
 
         if let Some(diff) = &app.diff {
             draw_diff_view(f, chunks[0], diff);
+        } else if app.recipes.visible {
+            draw_recipe_view(f, chunks[0], &app.recipes);
         } else {
             let title = Span::raw("Timeline");
             let block = Block::default().title(title).borders(Borders::ALL);
+            let main_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(chunks[0]);
+
             let items: Vec<ListItem> = app
                 .lines
                 .iter()
@@ -590,7 +1257,22 @@ fn draw_frame<B: Backend>(terminal: &mut Terminal<B>, app: &App) -> Result<()> {
             let list = List::new(items)
                 .block(block)
                 .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-            f.render_widget(list, chunks[0]);
+            let mut state = ListState::default();
+            if let Some(idx) = app.selected_display_index() {
+                state.select(Some(idx));
+            }
+            f.render_stateful_widget(list, main_chunks[0], &mut state);
+
+            let detail_title = if app.lines.is_empty() {
+                "Event (none)".to_string()
+            } else {
+                let pos = app.selected.min(app.lines.len() - 1) + 1;
+                format!("Event {} of {}", pos, app.lines.len())
+            };
+            let detail = Paragraph::new(app.event_detail_text())
+                .block(Block::default().title(detail_title).borders(Borders::ALL))
+                .wrap(Wrap { trim: false });
+            f.render_widget(detail, main_chunks[1]);
         }
 
         let status = Paragraph::new(Line::from(app.status.clone())).block(
@@ -601,10 +1283,12 @@ fn draw_frame<B: Backend>(terminal: &mut Terminal<B>, app: &App) -> Result<()> {
         f.render_widget(status, chunks[1]);
 
         if app.help {
-            let help_text = if app.diff.is_some() {
-                "Diff keys: q=quit, j/k hunk ±, h/H file ±"
+            let help_text = if app.recipes.visible {
+                "Recipes: Enter=dry-run, O=open diff, A=apply, R/Esc=close"
+            } else if app.diff.is_some() {
+                "Diff keys: q=quit, Esc=close, j/k hunk ±, h/H file ±, a=apply"
             } else {
-                "Keys: q=quit, f=follow toggle, ↑/↓ navigate, /=search, F1=help"
+                "Keys: q=quit, f=follow, r=recipes, ↑/↓ navigate, /=search, F1=help"
             };
             let area = centered_rect(60, 40, size);
             let help = Paragraph::new(help_text)
@@ -613,6 +1297,80 @@ fn draw_frame<B: Backend>(terminal: &mut Terminal<B>, app: &App) -> Result<()> {
         }
     })?;
     Ok(())
+}
+
+fn draw_recipe_view(
+    frame: &mut ratatui::Frame<'_>,
+    area: ratatui::layout::Rect,
+    state: &RecipeState,
+) {
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref())
+        .split(area);
+
+    let items: Vec<ListItem> = if state.entries.is_empty() {
+        vec![ListItem::new(Line::from("No recipes available"))]
+    } else {
+        state
+            .entries
+            .iter()
+            .map(|entry| {
+                let mut text = entry.name.clone();
+                if let Some(desc) = &entry.description {
+                    if !desc.trim().is_empty() {
+                        text.push_str(" — ");
+                        text.push_str(desc.trim());
+                    }
+                }
+                ListItem::new(Line::from(text))
+            })
+            .collect()
+    };
+
+    let list = List::new(items)
+        .block(Block::default().title("Recipes").borders(Borders::ALL))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    let mut list_state = ListState::default();
+    if !state.entries.is_empty() {
+        list_state.select(Some(state.selected.min(state.entries.len() - 1)));
+    }
+    frame.render_stateful_widget(list, chunks[0], &mut list_state);
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(err) = &state.error {
+        lines.push(Line::from(Span::styled(
+            err.clone(),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )));
+    }
+    if !state.output.is_empty() {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+        for line in &state.output {
+            lines.push(Line::from(line.clone()));
+        }
+    }
+    if let Some(info) = &state.info {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(Span::styled(
+            info.clone(),
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+    if lines.is_empty() {
+        lines.push(Line::from(
+            "Select a recipe and press Enter to run a dry-run (O diff, A apply).",
+        ));
+    }
+
+    let details = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .block(Block::default().title("Details").borders(Borders::ALL));
+    frame.render_widget(details, chunks[1]);
 }
 
 fn draw_diff_view(frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect, diff: &DiffState) {

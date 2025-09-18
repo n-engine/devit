@@ -619,6 +619,7 @@ dependencies = [
  "crossterm",
  "ctrlc",
  "ratatui",
+ "serde",
  "serde_json",
  "tempfile",
 ]

@@ -1,0 +1,50 @@
+{
+  "name": "devit-vscode",
+  "displayName": "DevIt Panel",
+  "description": "Minimal DevIt integration: timeline panel and MCP bridge.",
+  "version": "0.1.0",
+  "publisher": "devit",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "devit.showPanel",
+        "title": "DevIt: Show Panel"
+      },
+      {
+        "command": "devit.approveLastRequest",
+        "title": "DevIt: Approve Last Request"
+      },
+      {
+        "command": "devit.runRecipe",
+        "title": "DevIt: Run Recipe…"
+      }
+    ]
+  },
+  "scripts": {
+    "clean": "rimraf out",
+    "compile": "tsc -p .",
+    "build": "npm run clean && npm run compile",
+    "lint": "eslint .",
+    "watch": "tsc -p . -w",
+    "package": "vsce package",
+    "test": "echo 'No tests specified'",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.85.0",
+    "eslint": "^8.56.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {}
+}

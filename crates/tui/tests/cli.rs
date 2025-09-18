@@ -1,6 +1,9 @@
+use assert_cmd::cargo::cargo_bin;
+use serde_json::Value;
 use std::fs::File;
 use std::io::Write;
 use std::panic::{self, AssertUnwindSafe};
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -107,5 +110,78 @@ fn open_diff_missing_file_reports_error() {
         assert!(stderr.contains("diff_load_failed"));
         assert!(stderr.contains("not_found"));
         assert_eq!(output.status.code(), Some(2));
+    });
+}
+
+#[test]
+fn headless_open_log_prints_last_event() {
+    with_timeout(Duration::from_secs(5), || {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = dir.path().join("journal.jsonl");
+        let mut f = File::create(&journal).unwrap();
+        writeln!(f, "{}", r#"{"type":"test","n":1}"#).unwrap();
+        writeln!(f, "{}", r#"{"type":"test","n":2}"#).unwrap();
+
+        let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
+        cmd.env("DEVIT_TUI_HEADLESS", "1");
+        cmd.timeout(Duration::from_secs(5));
+        cmd.arg("--open-log").arg(&journal);
+        let assert = cmd.assert().success();
+        let output = assert.get_output();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("\"n\": 2"), "stdout: {stdout}");
+    });
+}
+
+#[test]
+fn headless_open_log_seek_last_selects_earlier_event() {
+    with_timeout(Duration::from_secs(5), || {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = dir.path().join("journal.jsonl");
+        let mut f = File::create(&journal).unwrap();
+        writeln!(f, "{}", r#"{"type":"test","n":1}"#).unwrap();
+        writeln!(f, "{}", r#"{"type":"test","n":2}"#).unwrap();
+
+        let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
+        cmd.env("DEVIT_TUI_HEADLESS", "1");
+        cmd.timeout(Duration::from_secs(5));
+        cmd.arg("--open-log")
+            .arg(&journal)
+            .arg("--seek-last")
+            .arg("1");
+        let assert = cmd.assert().success();
+        let output = assert.get_output();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("\"n\": 1"), "stdout: {stdout}");
+        assert!(!stdout.contains("\"n\": 2"), "stdout: {stdout}");
+    });
+}
+
+#[test]
+fn list_recipes_headless_outputs_json() {
+    with_timeout(Duration::from_secs(5), || {
+        let tmp = tempfile::tempdir().unwrap();
+        let recipes_dir = tmp.path().join(".devit/recipes");
+        std::fs::create_dir_all(&recipes_dir).unwrap();
+        let recipe_path = recipes_dir.join("demo.yaml");
+        let mut file = File::create(&recipe_path).unwrap();
+        writeln!(file, "id: demo").unwrap();
+        writeln!(file, "name: Demo Recipe").unwrap();
+
+        let devit_bin = cargo_bin("devit");
+        let config_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../devit.toml");
+        let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
+        cmd.env("DEVIT_TUI_DEVIT_BIN", devit_bin);
+        cmd.env("DEVIT_TUI_HEADLESS", "1");
+        cmd.env("DEVIT_CONFIG", config_path);
+        cmd.current_dir(tmp.path());
+        let assert = cmd.arg("--list-recipes").assert().success();
+        let output = assert.get_output();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let value: Value = serde_json::from_str(stdout.trim()).unwrap();
+        assert!(value.get("recipes").is_some());
+        let recipes = value.get("recipes").unwrap().as_array().unwrap();
+        assert_eq!(recipes.len(), 1);
+        assert_eq!(recipes[0].get("id").unwrap().as_str(), Some("demo"));
     });
 }

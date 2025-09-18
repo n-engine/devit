@@ -149,6 +149,89 @@ jobs:
         run: |
           jq -e '.payload.pass == true' .devit/reports/quality.json >/dev/null || exit 1
 
+  tui_build:
+    name: Build TUI binary
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Build release TUI
+        run: cargo build -p devit-tui --release
+      - name: Upload devit-tui binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: devit-tui-linux-amd64
+          path: target/release/devit-tui
+          if-no-files-found: error
+
+  vscode_pack:
+    name: Package VS Code extension
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install extension dependencies
+        run: npm ci
+        working-directory: editors/vscode/devit-vscode
+      - name: Build extension
+        run: npm run build
+        working-directory: editors/vscode/devit-vscode
+      - name: Package VSIX
+        run: npx vsce package --no-dependencies --out devit-vscode.vsix
+        working-directory: editors/vscode/devit-vscode
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: devit-vscode-vsix
+          path: editors/vscode/devit-vscode/devit-vscode.vsix
+          if-no-files-found: error
+
+  recipes_lint:
+    name: Lint recipes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install recipe lint dependencies
+        run: pip install yamllint pyyaml
+      - name: yamllint recipes
+        run: yamllint .devit/recipes
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Validate recipe schema
+        run: |
+          python - <<'PY'
+          import sys
+          import json
+          from pathlib import Path
+          import yaml
+
+          root = Path('.devit/recipes')
+          errors = []
+          for path in sorted(root.glob('*.y*ml')):
+              data = yaml.safe_load(path.read_text())
+              if not isinstance(data, dict):
+                  errors.append(f"{path}: expected mapping at root")
+                  continue
+              for field in ('id', 'name'):
+                  if field not in data or not str(data[field]).strip():
+                      errors.append(f"{path}: missing or empty '{field}'")
+          if errors:
+              print('\n'.join(errors), file=sys.stderr)
+              sys.exit(1)
+          PY
+      - name: Parse recipes with devit CLI
+        run: cargo run -p devit-cli -- recipe list >/dev/null
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build-test]

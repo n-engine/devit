@@ -177,6 +177,17 @@ Français (FR)
     - `cargo run -p devit-cli --features experimental --bin devit-mcp -- --cmd '<serveur MCP>' --handshake-only`
     - `cargo run -p devit-cli --features experimental --bin devit-mcp -- --cmd '<serveur MCP>' --echo "hello"`
 
+### DevIt TUI (ratatui) — démarrage rapide
+
+- Préparer un journal : `devit run --goal "..." --yes` produit `.devit/journal.jsonl` (ou utilisez les rapports générés par la CI).
+- Lancer l’interface : `cargo run -p devit-tui -- --open-log .devit/journal.jsonl`.
+- Navigation principale :
+  - `↑/↓` pour parcourir la timeline, `F` active/désactive le suivi des nouveaux events.
+  - `R` ouvre le panneau “Recipes” (sélection `↑/↓`, `Enter` pour dry-run, `O` pour afficher le diff, `A` pour appliquer, `Esc` pour revenir).
+  - Si un diff est ouvert : `j/k` changent de hunk, `h/H` changent de fichier, `Esc` ferme la vue diff.
+  - `F1` affiche l’aide contextuelle, `q` quitte.
+- Mode headless : `DEVIT_TUI_HEADLESS=1 devit-tui --open-log .devit/journal.jsonl` imprime l’event sélectionné (compatible CI/scripts).
+
 Plugins (WASM/WASI)
 - Expérimental (feature-gated). Utiliser `--features experimental`.
 - Registry: `.devit/plugins/<id>/devit-plugin.toml` (ou `DEVIT_PLUGINS_DIR`).
