@@ -605,11 +605,7 @@ fn draw_frame<B: Backend>(terminal: &mut Terminal<B>, app: &App) -> Result<()> {
     Ok(())
 }
 
-fn draw_diff_view(
-    frame: &mut ratatui::Frame<'_>,
-    area: ratatui::layout::Rect,
-    diff: &DiffState,
-) {
+fn draw_diff_view(frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect, diff: &DiffState) {
     let block_title = if let Some((file, _)) = diff.current() {
         format!(
             "Diff: {} ({}/{})",
@@ -718,7 +714,11 @@ fn parse_unified_diff(content: &str) -> Result<Vec<DiffFile>, String> {
                 .as_ref()
                 .or(self.old_path.as_ref())
                 .cloned()
-                .or_else(|| self.diff_header.as_ref().and_then(|h| extract_from_diff_header(h)))
+                .or_else(|| {
+                    self.diff_header
+                        .as_ref()
+                        .and_then(|h| extract_from_diff_header(h))
+                })
                 .unwrap_or_else(|| "(unknown)".to_string());
             DiffFile {
                 display_name: clean_diff_path(&display),
@@ -813,9 +813,7 @@ fn extract_from_diff_header(line: &str) -> Option<String> {
     // Expect format: diff --git a/path b/path
     let first = parts.find(|part| part.starts_with('a'))?;
     let second = parts.next();
-    second
-        .or(Some(first))
-        .map(clean_diff_path)
+    second.or(Some(first)).map(clean_diff_path)
 }
 
 fn centered_rect(

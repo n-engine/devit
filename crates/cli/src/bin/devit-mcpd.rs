@@ -90,6 +90,10 @@ struct Cli {
     /// Dump child stdout/stderr for debugging
     #[arg(long = "child-dump-dir")]
     child_dump_dir: Option<PathBuf>,
+
+    /// Override approval profile (safe|std|danger)
+    #[arg(long = "profile")]
+    profile: Option<String>,
 }
 
 fn main() {
@@ -110,7 +114,10 @@ fn real_main() -> Result<()> {
     let mut stdout = io::stdout();
     let mut lines = stdin.lock().lines();
     let timeout = timeout_from_cli_env(cli.timeout_secs);
-    let policies = load_policies(cli.config_path.as_ref()).unwrap_or_default();
+    let mut policies = load_policies(cli.config_path.as_ref()).unwrap_or_default();
+    if let Some(profile_override) = cli.profile.as_deref() {
+        apply_profile_to_policies(&mut policies, profile_override);
+    }
     let audit = AuditOpts {
         audit_enabled: !cli.no_audit,
         audit_path: cli.audit_path.clone(),
@@ -236,24 +243,34 @@ fn real_main() -> Result<()> {
                 if (policy == "on_request" || policy == "untrusted") && !cli.yes {
                     let approval_key =
                         ApprovalKey::new(&approval_tool, approval_plugin_id.as_deref());
-                    if !state.approvals.allow(&approval_key) {
-                        audit_pre(&audit, name, "pre-deny");
-                        let payload_obj = approval_required_payload(
-                            &policy,
-                            "pre",
-                            &approval_tool,
-                            approval_plugin_id.as_deref(),
-                        );
-                        writeln!(
-                            stdout,
-                            "{}",
-                            json!({
-                                "type": "tool.error",
-                                "payload": payload_obj
-                            })
-                        )?;
-                        stdout.flush()?;
-                        continue;
+                    match state.approvals.allow(&approval_key) {
+                        ApprovalHit::Denied => {
+                            audit_pre(&audit, name, "pre-deny");
+                            let payload_obj = approval_required_payload(
+                                &policy,
+                                "pre",
+                                &approval_tool,
+                                approval_plugin_id.as_deref(),
+                            );
+                            writeln!(
+                                stdout,
+                                "{}",
+                                json!({
+                                    "type": "tool.error",
+                                    "payload": payload_obj
+                                })
+                            )?;
+                            stdout.flush()?;
+                            continue;
+                        }
+                        ApprovalHit::Once => {
+                            audit_server_approve_consume(
+                                &audit,
+                                &approval_tool,
+                                approval_plugin_id.as_deref(),
+                            );
+                        }
+                        ApprovalHit::Session | ApprovalHit::Always => {}
                     }
                 }
                 match name {
@@ -903,6 +920,25 @@ fn real_main() -> Result<()> {
                             .clone()
                             .unwrap_or_else(|| PathBuf::from("devit"));
                         let args_json = payload.get("args").cloned().unwrap_or(json!({}));
+                        if let Some(requested_tool) = args_json.get("tool").and_then(|v| v.as_str())
+                        {
+                            if requested_tool.starts_with("server.") {
+                                writeln!(
+                                    stdout,
+                                    "{}",
+                                    json!({
+                                        "type": "tool.error",
+                                        "payload": {
+                                            "server_tool_proxy_denied": true,
+                                            "tool": requested_tool,
+                                            "hint": "call server.* tool directly"
+                                        }
+                                    })
+                                )?;
+                                stdout.flush()?;
+                                continue;
+                            }
+                        }
                         // PR1: explicit env request denial
                         if let Some(args_obj) = args_json.get("args").and_then(|v| v.as_object()) {
                             if let Some(env_obj) = args_obj.get("env").and_then(|v| v.as_object()) {
@@ -1123,6 +1159,35 @@ fn first_env_denied(env_map: &serde_json::Map<String, Value>, allow: &[String]) 
 #[derive(Default)]
 struct Policies(HashMap<String, String>);
 
+fn apply_profile_to_policies(policies: &mut Policies, profile: &str) {
+    let profile_lc = profile.to_ascii_lowercase();
+    match profile_lc.as_str() {
+        "safe" => {
+            policies
+                .0
+                .insert("devit.tool_call".into(), "on_request".into());
+            policies
+                .0
+                .insert("plugin.invoke".into(), "on_request".into());
+        }
+        "std" => {
+            policies
+                .0
+                .insert("devit.tool_call".into(), "on_failure".into());
+            policies
+                .0
+                .insert("plugin.invoke".into(), "on_request".into());
+        }
+        "danger" => {
+            policies.0.insert("devit.tool_call".into(), "never".into());
+            policies
+                .0
+                .insert("plugin.invoke".into(), "on_failure".into());
+        }
+        _ => {}
+    }
+}
+
 fn load_policies(path: Option<&PathBuf>) -> Result<Policies> {
     let path = if let Some(p) = path {
         p.clone()
@@ -1148,22 +1213,7 @@ fn load_policies(path: Option<&PathBuf>) -> Result<Policies> {
     if let Some(mcp) = r.mcp {
         // Apply profile presets first
         if let Some(p) = mcp.profile.as_deref() {
-            match p {
-                "safe" => {
-                    out.0.insert("devit.tool_call".into(), "on_request".into());
-                    out.0.insert("plugin.invoke".into(), "on_request".into());
-                    // server.* already "never" by defaults
-                }
-                "std" => {
-                    out.0.insert("devit.tool_call".into(), "on_failure".into());
-                    out.0.insert("plugin.invoke".into(), "on_request".into());
-                }
-                "danger" => {
-                    out.0.insert("devit.tool_call".into(), "never".into());
-                    out.0.insert("plugin.invoke".into(), "on_failure".into());
-                }
-                _ => {}
-            }
+            apply_profile_to_policies(&mut out, p);
         }
         // Then explicit overrides
         if let Some(map) = mcp.approvals {
@@ -1375,6 +1425,30 @@ fn audit_server_approve(
     );
 }
 
+fn audit_server_approve_consume(opts: &AuditOpts, tool: &str, plugin_id: Option<&str>) {
+    if !opts.audit_enabled {
+        return;
+    }
+    let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let mut payload = json!({
+        "ts": ts,
+        "action": "server.approve.consume",
+        "scope": "once",
+        "tool": tool,
+    });
+    if let Some(pid) = plugin_id {
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("plugin_id".to_string(), json!(pid));
+        }
+    }
+    let line = payload.to_string();
+    append_signed(
+        &opts.audit_path.as_path(),
+        &opts.hmac_key_path.as_path(),
+        &line,
+    );
+}
+
 // --- helper de dump de politique (JSON) ---
 pub fn policy_dump_json(config_path: Option<&std::path::Path>) -> serde_json::Value {
     use std::collections::BTreeMap;
@@ -1397,22 +1471,8 @@ pub fn policy_dump_json(config_path: Option<&std::path::Path>) -> serde_json::Va
             if let Ok(root) = toml::from_str::<Root>(&s) {
                 if let Some(m) = root.mcp {
                     if let Some(pr) = m.profile {
-                        profile = Some(pr.clone());
-                        match pr.as_str() {
-                            "safe" => {
-                                eff.0.insert("devit.tool_call".into(), "on_request".into());
-                                eff.0.insert("plugin.invoke".into(), "on_request".into());
-                            }
-                            "std" => {
-                                eff.0.insert("devit.tool_call".into(), "on_failure".into());
-                                eff.0.insert("plugin.invoke".into(), "on_request".into());
-                            }
-                            "danger" => {
-                                eff.0.insert("devit.tool_call".into(), "never".into());
-                                eff.0.insert("plugin.invoke".into(), "on_failure".into());
-                            }
-                            _ => {}
-                        }
+                        apply_profile_to_policies(&mut eff, &pr);
+                        profile = Some(pr);
                     }
                     if let Some(map) = m.approvals {
                         for (k, v) in map.into_iter() {
@@ -1564,18 +1624,26 @@ impl ApprovalsStore {
         }
     }
 
-    fn allow(&mut self, key: &ApprovalKey) -> bool {
+    fn allow(&mut self, key: &ApprovalKey) -> ApprovalHit {
         if self.once.remove(key) {
-            return true;
+            return ApprovalHit::Once;
         }
         if self.session.contains(key) {
-            return true;
+            return ApprovalHit::Session;
         }
         if self.always.contains(key) {
-            return true;
+            return ApprovalHit::Always;
         }
-        false
+        ApprovalHit::Denied
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApprovalHit {
+    Denied,
+    Once,
+    Session,
+    Always,
 }
 
 struct ServerState {
@@ -1796,8 +1864,8 @@ mod tests {
         let mut store = ApprovalsStore::new();
         let key = ApprovalKey::new("shell_exec", None);
         store.approve("once", key.clone()).unwrap();
-        assert!(store.allow(&key));
-        assert!(!store.allow(&key));
+        assert!(matches!(store.allow(&key), ApprovalHit::Once));
+        assert!(matches!(store.allow(&key), ApprovalHit::Denied));
     }
 
     #[test]
@@ -1805,8 +1873,8 @@ mod tests {
         let mut store = ApprovalsStore::new();
         let key = ApprovalKey::new("shell_exec", None);
         store.approve("session", key.clone()).unwrap();
-        assert!(store.allow(&key));
-        assert!(store.allow(&key));
+        assert!(matches!(store.allow(&key), ApprovalHit::Session));
+        assert!(matches!(store.allow(&key), ApprovalHit::Session));
     }
 
     #[test]

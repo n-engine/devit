@@ -605,7 +605,8 @@ async fn main() -> Result<()> {
             ToolCmd::List => {
                 let tools = serde_json::json!([
                     {"name": "fs_patch_apply", "args": {"patch": "string", "mode": "index|worktree", "check_only": "bool"}, "description": "Apply unified diff (index/worktree), or --check-only"},
-                    {"name": "shell_exec", "args": {"cmd": "string"}, "description": "Execute command via sandboxed shell (safe-list)"}
+                    {"name": "shell_exec", "args": {"cmd": "string"}, "description": "Execute command via sandboxed shell (safe-list)"},
+                    {"name": "server.approve", "args": {"name": "string", "scope": "once|session|always", "plugin_id": "string?"}, "description": "Approve on-request tools (once/session/always)"}
                 ]);
                 let payload = serde_json::json!({"tools": tools});
                 emit_json(&payload)?;
