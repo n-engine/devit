@@ -10,10 +10,12 @@ use devit_tools::{codeexec, git};
 mod commit_msg;
 mod merge_assist;
 mod precommit;
+mod recipes;
 mod report;
 mod test_runner;
 use hmac::{Hmac, Mac};
 use rand::RngCore;
+use recipes::{list_recipes, run_recipe, RecipeRunError};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{stdin, Read, Write};
@@ -81,6 +83,12 @@ enum Commands {
     Tool {
         #[command(subcommand)]
         action: ToolCmd,
+    },
+
+    /// Recipes runner
+    Recipe {
+        #[command(subcommand)]
+        action: RecipeCmd,
     },
 
     /// TUI helpers
@@ -181,6 +189,19 @@ enum ToolCmd {
         /// Only run precommit pipeline and exit (only for fs_patch_apply)
         #[arg(long = "precommit-only")]
         precommit_only: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum RecipeCmd {
+    /// List available recipes (JSON)
+    List,
+    /// Run a recipe by id
+    Run {
+        #[arg(value_name = "ID")]
+        id: String,
+        #[arg(long = "dry-run", default_value_t = false)]
+        dry_run: bool,
     },
 }
 
@@ -671,6 +692,21 @@ async fn main() -> Result<()> {
             TuiCmd::OpenLog { path } => {
                 run_tui_command(&["--open-log", path.as_str()])?;
             }
+        },
+        Some(Commands::Recipe { action }) => match action {
+            RecipeCmd::List => {
+                let recipes = list_recipes()?;
+                emit_json(&serde_json::json!({"recipes": recipes}))?;
+            }
+            RecipeCmd::Run { id, dry_run } => match run_recipe(&id, dry_run) {
+                Ok(report) => {
+                    emit_json(&serde_json::json!({"ok": true, "recipe": report}))?;
+                }
+                Err(RecipeRunError { payload, exit_code }) => {
+                    emit_json(&serde_json::json!({"type":"tool.error","payload": payload}))?;
+                    std::process::exit(exit_code);
+                }
+            },
         },
         Some(Commands::Context { action }) => match action {
             CtxCmd::Map {
