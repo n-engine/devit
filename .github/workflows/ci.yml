@@ -31,6 +31,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - name: Install nightly toolchain (report-time)
+        run: rustup toolchain install nightly --profile minimal --no-self-update
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -99,9 +101,17 @@ jobs:
           set -euo pipefail
           TO=$(command -v timeout || command -v gtimeout || echo "")
           if [ -n "$TO" ]; then
+            if ! "$TO" "300s" cargo +nightly test -p devit-tui -- --nocapture --report-time --test-threads=1; then
+              echo "warn: --report-time unavailable; retrying devit-tui tests without it" >&2
+              "$TO" "300s" cargo +nightly test -p devit-tui -- --nocapture --test-threads=1
+            fi
             "$TO" "${DEVIT_TIMEOUT_SECS}s" cargo test --workspace --all-targets --no-fail-fast
           else
             echo "warn: no timeout available; running tests without external timeout" >&2
+            if ! cargo +nightly test -p devit-tui -- --nocapture --report-time --test-threads=1; then
+              echo "warn: --report-time unavailable; retrying devit-tui tests without it" >&2
+              cargo +nightly test -p devit-tui -- --nocapture --test-threads=1
+            fi
             cargo test --workspace --all-targets --no-fail-fast
           fi
 
