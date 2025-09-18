@@ -32,6 +32,10 @@ struct Args {
     /// Open a unified diff (path or '-' for stdin)
     #[arg(long = "open-diff", value_name = "PATH")]
     open_diff: Option<PathBuf>,
+
+    /// Open a journal log (path or '-' for stdin)
+    #[arg(long = "open-log", value_name = "PATH")]
+    open_log: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -175,11 +179,16 @@ fn main() -> Result<()> {
 }
 
 fn run(args: Args) -> Result<()> {
-    if args.journal_path.is_none() && args.open_diff.is_none() {
-        bail!("either --journal-path or --open-diff must be provided");
+    let journal_path = args
+        .open_log
+        .clone()
+        .or_else(|| args.journal_path.clone());
+
+    if journal_path.is_none() && args.open_diff.is_none() {
+        bail!("either --journal-path/--open-log or --open-diff must be provided");
     }
 
-    if let Some(path) = &args.journal_path {
+    if let Some(path) = &journal_path {
         if !path.exists() {
             print_tool_error_journal_not_found(path);
             bail!("journal missing");
@@ -189,7 +198,7 @@ fn run(args: Args) -> Result<()> {
     let headless = headless_mode();
     let initial_follow = if headless { false } else { args.follow };
 
-    let mut app = App::new(args.journal_path.clone(), initial_follow);
+    let mut app = App::new(journal_path.clone(), initial_follow);
     app.status = best_effort_status();
     app.load_initial()?;
 
@@ -222,6 +231,10 @@ fn run(args: Args) -> Result<()> {
                 std::process::exit(2);
             }
         }
+    }
+
+    if journal_path.is_some() && args.open_diff.is_none() && args.open_log.is_some() {
+        app.follow = false;
     }
 
     if headless {
