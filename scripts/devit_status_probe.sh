@@ -34,10 +34,10 @@ index 111..222 100644
 +New
 EOF
 if have cargo; then
-  if rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 cargo run -p devit-tui -- --open-diff '"$PATCH_TEST" ; then
-    status[T3]="GREEN"; reason[T3]="devit-tui --open-diff OK";
-  elif have target/debug/devit-tui && rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 target/debug/devit-tui --open-diff '"$PATCH_TEST" ; then
-    status[T3]="GREEN"; reason[T3]="devit-tui (binaire) --open-diff OK";
+  if rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 cargo run -p devit-tui -- --open '"$PATCH_TEST" ; then
+    status[T3]="GREEN"; reason[T3]="devit-tui --open OK";
+  elif have target/debug/devit-tui && rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 target/debug/devit-tui --open '"$PATCH_TEST" ; then
+    status[T3]="GREEN"; reason[T3]="devit-tui (binaire) --open OK";
   else
     status[T3]="RED"; reason[T3]="commande --open-diff indisponible/KO";
   fi

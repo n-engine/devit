@@ -76,7 +76,7 @@ fn open_diff_headless_from_file() {
         let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
         cmd.env("DEVIT_TUI_HEADLESS", "1");
         cmd.timeout(Duration::from_secs(5));
-        cmd.arg("--open-diff").arg(&diff_path);
+        cmd.arg("--open").arg(&diff_path);
         cmd.assert().success();
     });
 }
@@ -88,7 +88,7 @@ fn open_diff_headless_from_stdin() {
         let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
         cmd.env("DEVIT_TUI_HEADLESS", "1");
         cmd.timeout(Duration::from_secs(5));
-        cmd.arg("--open-diff").arg("-");
+        cmd.arg("--open").arg("-");
         cmd.write_stdin(diff);
         cmd.assert().success();
     });
@@ -100,7 +100,7 @@ fn open_diff_missing_file_reports_error() {
         let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
         cmd.env("DEVIT_TUI_HEADLESS", "1");
         cmd.timeout(Duration::from_secs(5));
-        cmd.arg("--open-diff").arg("/no/such/diff.patch");
+        cmd.arg("--open").arg("/no/such/diff.patch");
         let assert = cmd.assert().failure();
         let output = assert.get_output();
         let stderr = String::from_utf8_lossy(&output.stderr);

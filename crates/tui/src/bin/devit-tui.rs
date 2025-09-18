@@ -30,8 +30,8 @@ struct Args {
     follow: bool,
 
     /// Open a unified diff (path or '-' for stdin)
-    #[arg(long = "open-diff", value_name = "PATH")]
-    open_diff: Option<PathBuf>,
+    #[arg(long = "open", alias = "open-diff", value_name = "PATH")]
+    open_target: Option<PathBuf>,
 
     /// Open a journal log (path or '-' for stdin)
     #[arg(long = "open-log", value_name = "PATH")]
@@ -179,12 +179,9 @@ fn main() -> Result<()> {
 }
 
 fn run(args: Args) -> Result<()> {
-    let journal_path = args
-        .open_log
-        .clone()
-        .or_else(|| args.journal_path.clone());
+    let journal_path = args.open_log.clone().or_else(|| args.journal_path.clone());
 
-    if journal_path.is_none() && args.open_diff.is_none() {
+    if journal_path.is_none() && args.open_target.is_none() {
         bail!("either --journal-path/--open-log or --open-diff must be provided");
     }
 
@@ -202,7 +199,7 @@ fn run(args: Args) -> Result<()> {
     app.status = best_effort_status();
     app.load_initial()?;
 
-    if let Some(open_diff) = args.open_diff.as_ref() {
+    if let Some(open_diff) = args.open_target.as_ref() {
         let source = if open_diff.as_os_str() == "-" {
             DiffSource::Stdin
         } else {
@@ -233,7 +230,7 @@ fn run(args: Args) -> Result<()> {
         }
     }
 
-    if journal_path.is_some() && args.open_diff.is_none() && args.open_log.is_some() {
+    if journal_path.is_some() && args.open_target.is_none() && args.open_log.is_some() {
         app.follow = false;
     }
 

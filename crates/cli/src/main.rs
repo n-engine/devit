@@ -83,6 +83,12 @@ enum Commands {
         action: ToolCmd,
     },
 
+    /// TUI helpers
+    Tui {
+        #[command(subcommand)]
+        action: TuiCmd,
+    },
+
     /// Context utilities
     Context {
         #[command(subcommand)]
@@ -176,6 +182,14 @@ enum ToolCmd {
         #[arg(long = "precommit-only")]
         precommit_only: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum TuiCmd {
+    /// Open a unified diff in the TUI
+    OpenDiff { path: String },
+    /// Open a journal log in the TUI
+    OpenLog { path: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -650,6 +664,14 @@ async fn main() -> Result<()> {
                 }
             }
         },
+        Some(Commands::Tui { action }) => match action {
+            TuiCmd::OpenDiff { path } => {
+                run_tui_command(&["--open", path.as_str()])?;
+            }
+            TuiCmd::OpenLog { path } => {
+                run_tui_command(&["--open-log", path.as_str()])?;
+            }
+        },
         Some(Commands::Context { action }) => match action {
             CtxCmd::Map {
                 path,
@@ -943,6 +965,26 @@ fn emit_json(value: &serde_json::Value) -> Result<()> {
     serde_json::to_writer(&mut stdout, value)?;
     stdout.write_all(b"\n")?;
     stdout.flush()?;
+    Ok(())
+}
+
+fn run_tui_command(args: &[&str]) -> Result<()> {
+    let mut candidate = std::env::current_exe()?;
+    candidate.set_file_name("devit-tui");
+
+    let status = if candidate.exists() {
+        std::process::Command::new(&candidate).args(args).status()
+    } else {
+        std::process::Command::new("devit-tui").args(args).status()
+    }
+    .with_context(|| format!("spawn devit-tui with args {:?}", args))?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "devit-tui exited with status {}",
+            status.code().unwrap_or(-1)
+        ));
+    }
     Ok(())
 }
 
