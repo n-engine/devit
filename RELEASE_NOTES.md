@@ -1,5 +1,16 @@
 # RELEASE_NOTES.md
 
+## v0.5.0-rc.1
+
+- TUI: mode headless stable (`--journal-path`), `--open-diff`, `--open-log`, hooks recettes (list/run + preview diff + apply).
+- MCP: approvals hiérarchiques pour `devit.tool_call` (outer/inner; ordre de priorité: inner.once > outer.once > inner.session > outer.session > inner.always > outer.always); `server.approve` exposé.
+  - Détails et exemples: voir `docs/approvals.md`.
+- CLI interop: `devit-mcpd` transmet désormais `{name, args, yes}` à `devit tool call -` (JSON-only; logs d’exécution détaillés, dumps via `--child-dump-dir`).
+- Recipes: runner YAML + starters inclus (add-ci, rust-upgrade-1.81, migrate-jest-vitest).
+- VS Code: extension packable (.vsix), panel timeline, Approve, Run Recipe…; Code Actions de base (Rust/JS/CI).
+- CI: jobs packaging détectés (binaire TUI, .vsix, lint recettes) + SBOM.
+- Note: sur environnements limités, augmenter `--mem-mb` côté `devit-mcpd` (ex. 2048) pour éviter des "Cannot allocate memory".
+
 ## v0.4.0-rc.1
 
 Sécurité & Observabilité

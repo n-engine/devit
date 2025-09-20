@@ -119,16 +119,21 @@ jobs:
         run: |
           cargo run -p devit-cli --bin devit -- report sarif >/dev/null
           cargo run -p devit-cli --bin devit -- report junit >/dev/null
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          cargo run -p devit-cli --bin devit -- sbom gen --out .devit/sbom.cdx.json >/dev/null
 
       - name: Aggregate quality (thresholds)
         run: |
           target/debug/devit quality gate --junit .devit/reports/junit.xml --sarif .devit/reports/sarif.json --json | tee .devit/reports/quality.json
 
-      - name: Upload DevIt reports
+      - name: Upload DevIt reports + SBOM
         uses: actions/upload-artifact@v4
         with:
           name: devit-reports-${{ matrix.os }}
-          path: .devit/reports
+          path: |
+            .devit/reports
+            .devit/sbom.cdx.json
 
       - name: Upload SARIF to GitHub Code Scanning
         if: always()
@@ -177,13 +182,16 @@ jobs:
         with:
           node-version: '20'
       - name: Install extension dependencies
-        run: npm ci
+        run: npm install
+        working-directory: editors/vscode/devit-vscode
+      - name: Run ESLint
+        run: npm run lint
         working-directory: editors/vscode/devit-vscode
       - name: Build extension
         run: npm run build
         working-directory: editors/vscode/devit-vscode
       - name: Package VSIX
-        run: npx vsce package --no-dependencies --out devit-vscode.vsix
+        run: npx @vscode/vsce package --no-dependencies --out devit-vscode.vsix
         working-directory: editors/vscode/devit-vscode
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4

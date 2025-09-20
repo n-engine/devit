@@ -303,6 +303,22 @@ Politique côté serveur :
 devit-mcp --cmd 'devit-mcpd --yes' --policy | jq
 ```
 
+Lancer mcpd avec des flags typiques (profil/réseau/limites):
+
+```
+devit-mcpd --yes --profile safe --sandbox bwrap --net off --cpu-secs 30 --mem-mb 1024
+```
+
+Approvals rapides (outer/inner) — voir `docs/approvals.md` pour les détails hiérarchiques:
+
+```
+# Accorder une fois pour shell_exec (inner)
+devit-mcp --cmd 'devit-mcpd --yes' --call server.approve --json '{"name":"devit.tool_call:shell_exec","scope":"once"}'
+
+# Accorder pour la session entière (outer)
+devit-mcp --cmd 'devit-mcpd --yes' --call server.approve --json '{"name":"devit.tool_call","scope":"session"}'
+```
+
 Santé et stats :
 
 ```
@@ -324,7 +340,25 @@ Watchdog global (arrêt après N secondes) :
 # Le serveur s'arrête proprement après 1s (exit 2), message clair sur stderr
 devit-mcp --cmd 'devit-mcpd --yes --max-runtime-secs 1' --policy || echo "exit=$?"
 ```
-```
+
+## Dépannage mcpd (rapide)
+
+- Mémoire insuffisante ("Cannot allocate memory" / "memory allocation ... failed")
+  - Augmenter la limite: `devit-mcpd --yes --mem-mb 2048` (ou plus selon l’environnement)
+- Délai trop court
+  - Allonger: `devit-mcpd --yes --timeout-secs 60` ou `DEVIT_TIMEOUT_SECS=60 devit-mcpd --yes`
+- bwrap absent (sandbox_unavailable)
+  - Installer bubblewrap, ou lancer sans bwrap: `--sandbox none` (les limites CPU/Mémoire restent actives via rlimits)
+- child_invalid_json (sortie enfant non JSON)
+  - Activer les dumps: `--child-dump-dir .devit/reports` puis inspecter `child_*.stdout.log` / `child_*.stderr.log`
+- Approvals trop fréquents
+  - Accorder côté outer/inner: `server.approve` (ex.: `devit.tool_call:shell_exec` ou `devit.tool_call`) — voir `docs/approvals.md`
+- Réseau bloqué en sandbox bwrap
+  - Par défaut `--net off` (isolé). Activer: `--net full` si nécessaire
+- Proxy server.* refusé depuis devit.tool_call
+  - Message `server_tool_proxy_denied`: appelez directement l’outil `server.*` souhaité
+- Variables d’environnement refusées
+  - `secrets_env_denied`: variable non autorisée. Utiliser l’allowlist adéquate dans la config, ou éviter `args.env`
 
 Config d'exemple
 

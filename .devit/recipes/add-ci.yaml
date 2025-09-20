@@ -1,3 +1,4 @@
+---
 id: add-ci
 name: "Add CI workflow"
 description: "Create a starter GitHub Actions CI workflow."

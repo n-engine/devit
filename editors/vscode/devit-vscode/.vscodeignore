@@ -4,3 +4,5 @@ src
 .eslintrc.json
 .gitignore
 .vscode
+.devit/**
+*.vsix

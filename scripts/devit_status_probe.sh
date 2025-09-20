@@ -17,7 +17,7 @@ if have target/debug/devit-mcp && have target/debug/devit-mcpd; then
   rt 10 bash -lc "target/debug/devit-mcp --cmd 'target/debug/devit-mcpd --yes --devit-bin target/debug/devit' --handshake-only >'$HANDSHAKE_JSON'" || true
   rt 10 bash -lc "target/debug/devit-mcp --cmd 'target/debug/devit-mcpd --yes --devit-bin target/debug/devit' --call devit.tool_list --json '{}' >'$TOOLS_JSON'" || true
 fi
-if file_exists "$HANDSHAKE_JSON" && grep -q '"server.approve"' "$HANDSHAKE_JSON"; then
+if file_exists "$HANDSHAKE_JSON" && head -n1 "$HANDSHAKE_JSON" | grep -q '"server.approve"'; then
   status[T2]="GREEN"; reason[T2]="handshake expose server.approve";
 elif file_exists "$TOOLS_JSON" && grep -q '"server.approve"' "$TOOLS_JSON"; then
   status[T2]="YELLOW"; reason[T2]="tool_list JSON contient server.approve";
@@ -34,10 +34,10 @@ index 111..222 100644
 +New
 EOF
 if have cargo; then
-  if rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 cargo run -p devit-tui -- --open '"$PATCH_TEST" ; then
-    status[T3]="GREEN"; reason[T3]="devit-tui --open OK";
-  elif have target/debug/devit-tui && rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 target/debug/devit-tui --open '"$PATCH_TEST" ; then
-    status[T3]="GREEN"; reason[T3]="devit-tui (binaire) --open OK";
+  if rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 cargo run -p devit-tui -- --open-diff '"$PATCH_TEST" ; then
+    status[T3]="GREEN"; reason[T3]="devit-tui --open-diff OK";
+  elif have target/debug/devit-tui && rt 10 bash -lc 'DEVIT_TUI_HEADLESS=1 target/debug/devit-tui --open-diff '"$PATCH_TEST" ; then
+    status[T3]="GREEN"; reason[T3]="devit-tui (binaire) --open-diff OK";
   else
     status[T3]="RED"; reason[T3]="commande --open-diff indisponible/KO";
   fi

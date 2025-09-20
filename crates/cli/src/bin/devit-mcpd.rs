@@ -241,36 +241,86 @@ fn real_main() -> Result<()> {
                     .unwrap_or_else(|| default_policy_for(name));
                 // on_request/untrusted: require approval before running
                 if (policy == "on_request" || policy == "untrusted") && !cli.yes {
-                    let approval_key =
-                        ApprovalKey::new(&approval_tool, approval_plugin_id.as_deref());
-                    match state.approvals.allow(&approval_key) {
-                        ApprovalHit::Denied => {
-                            audit_pre(&audit, name, "pre-deny");
-                            let payload_obj = approval_required_payload(
-                                &policy,
-                                "pre",
-                                &approval_tool,
-                                approval_plugin_id.as_deref(),
-                            );
-                            writeln!(
-                                stdout,
-                                "{}",
-                                json!({
-                                    "type": "tool.error",
-                                    "payload": payload_obj
-                                })
-                            )?;
-                            stdout.flush()?;
-                            continue;
+                    if name == "devit.tool_call" {
+                        // Hierarchical approvals: inner (devit.tool_call:X) then outer (devit.tool_call)
+                        let requested_tool = args_json
+                            .get("tool")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let inner_key_name = format!("devit.tool_call:{}", requested_tool);
+                        let inner_key = ApprovalKey::new(&inner_key_name, None);
+                        let outer_key = ApprovalKey::new("devit.tool_call", None);
+                        let (hit, which) = state.approvals.allow_hierarchical(&inner_key, &outer_key);
+                        match hit {
+                            ApprovalHit::Denied => {
+                                audit_pre(&audit, name, "pre-deny");
+                                let payload_obj = approval_required_payload(
+                                    &policy,
+                                    "pre",
+                                    &approval_tool,
+                                    approval_plugin_id.as_deref(),
+                                );
+                                writeln!(
+                                    stdout,
+                                    "{}",
+                                    json!({
+                                        "type": "tool.error",
+                                        "payload": payload_obj
+                                    })
+                                )?;
+                                stdout.flush()?;
+                                continue;
+                            }
+                            other_hit => {
+                                // Log matched key and hit
+                                let which_label = which.unwrap_or("outer");
+                                let matched_name = if which_label == "inner" {
+                                    inner_key_name.as_str()
+                                } else {
+                                    "devit.tool_call"
+                                };
+                                audit_server_approve_consume_detail(
+                                    &audit,
+                                    other_hit,
+                                    &approval_tool,
+                                    approval_plugin_id.as_deref(),
+                                    which_label,
+                                    matched_name,
+                                );
+                            }
                         }
-                        ApprovalHit::Once => {
-                            audit_server_approve_consume(
-                                &audit,
-                                &approval_tool,
-                                approval_plugin_id.as_deref(),
-                            );
+                    } else {
+                        let approval_key =
+                            ApprovalKey::new(&approval_tool, approval_plugin_id.as_deref());
+                        match state.approvals.allow(&approval_key) {
+                            ApprovalHit::Denied => {
+                                audit_pre(&audit, name, "pre-deny");
+                                let payload_obj = approval_required_payload(
+                                    &policy,
+                                    "pre",
+                                    &approval_tool,
+                                    approval_plugin_id.as_deref(),
+                                );
+                                writeln!(
+                                    stdout,
+                                    "{}",
+                                    json!({
+                                        "type": "tool.error",
+                                        "payload": payload_obj
+                                    })
+                                )?;
+                                stdout.flush()?;
+                                continue;
+                            }
+                            ApprovalHit::Once => {
+                                audit_server_approve_consume(
+                                    &audit,
+                                    &approval_tool,
+                                    approval_plugin_id.as_deref(),
+                                );
+                            }
+                            ApprovalHit::Session | ApprovalHit::Always => {}
                         }
-                        ApprovalHit::Session | ApprovalHit::Always => {}
                     }
                 }
                 match name {
@@ -992,8 +1042,27 @@ fn real_main() -> Result<()> {
                                 continue;
                             }
                         }
+                        // Transform payload to DevIt CLI expected shape: {"name":"X","args":{...},"yes":bool}
+                        let requested_tool = args_json
+                            .get("tool")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let forwarded_args = args_json
+                            .get("args")
+                            .cloned()
+                            .unwrap_or_else(|| json!({}));
+                        let mut forwarded = json!({
+                            "name": requested_tool,
+                            "args": forwarded_args,
+                        });
+                        if cli.yes {
+                            if let Some(obj) = forwarded.as_object_mut() {
+                                obj.insert("yes".to_string(), json!(true));
+                            }
+                        }
                         let start = Instant::now();
-                        match run_devit_call_sandboxed(&bin, &args_json, timeout, &cli) {
+                        match run_devit_call_sandboxed(&bin, &forwarded, timeout, &cli) {
                             Ok(out) => {
                                 // on_failure: if DevIt reports ok=false, require approval (post)
                                 let is_fail = out
@@ -1449,6 +1518,45 @@ fn audit_server_approve_consume(opts: &AuditOpts, tool: &str, plugin_id: Option<
     );
 }
 
+fn audit_server_approve_consume_detail(
+    opts: &AuditOpts,
+    hit: ApprovalHit,
+    tool: &str,
+    plugin_id: Option<&str>,
+    approval_key_label: &str, // "inner" | "outer"
+    name: &str,               // matched key name (e.g., "devit.tool_call" or "devit.tool_call:<subtool>")
+) {
+    if !opts.audit_enabled {
+        return;
+    }
+    let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let hit_str = match hit {
+        ApprovalHit::Once => "once",
+        ApprovalHit::Session => "session",
+        ApprovalHit::Always => "always",
+        ApprovalHit::Denied => "denied",
+    };
+    let mut payload = json!({
+        "ts": ts,
+        "action": "server.approve.consume",
+        "hit": hit_str,
+        "tool": tool,
+        "approval_key": approval_key_label,
+        "name": name,
+    });
+    if let Some(pid) = plugin_id {
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("plugin_id".to_string(), json!(pid));
+        }
+    }
+    let line = payload.to_string();
+    append_signed(
+        &opts.audit_path.as_path(),
+        &opts.hmac_key_path.as_path(),
+        &line,
+    );
+}
+
 // --- helper de dump de politique (JSON) ---
 pub fn policy_dump_json(config_path: Option<&std::path::Path>) -> serde_json::Value {
     use std::collections::BTreeMap;
@@ -1635,6 +1743,34 @@ impl ApprovalsStore {
             return ApprovalHit::Always;
         }
         ApprovalHit::Denied
+    }
+
+    // Hierarchical allow for devit.tool_call approvals.
+    // Order: inner.once > outer.once > inner.session > outer.session > inner.always > outer.always
+    fn allow_hierarchical(
+        &mut self,
+        inner: &ApprovalKey,
+        outer: &ApprovalKey,
+    ) -> (ApprovalHit, Option<&'static str>) {
+        if self.once.remove(inner) {
+            return (ApprovalHit::Once, Some("inner"));
+        }
+        if self.once.remove(outer) {
+            return (ApprovalHit::Once, Some("outer"));
+        }
+        if self.session.contains(inner) {
+            return (ApprovalHit::Session, Some("inner"));
+        }
+        if self.session.contains(outer) {
+            return (ApprovalHit::Session, Some("outer"));
+        }
+        if self.always.contains(inner) {
+            return (ApprovalHit::Always, Some("inner"));
+        }
+        if self.always.contains(outer) {
+            return (ApprovalHit::Always, Some("outer"));
+        }
+        (ApprovalHit::Denied, None)
     }
 }
 
@@ -1898,6 +2034,34 @@ mod tests {
         let (tool, plugin_id) = approval_identity("plugin.invoke", &args);
         assert_eq!(tool, "plugin.invoke:example");
         assert_eq!(plugin_id.as_deref(), Some("example"));
+    }
+
+    #[test]
+    fn hierarchical_approvals_inner_once_then_denied() {
+        let mut store = ApprovalsStore::new();
+        let inner = ApprovalKey::new("devit.tool_call:shell_exec", None);
+        let outer = ApprovalKey::new("devit.tool_call", None);
+        store.approve("once", inner.clone()).unwrap();
+        let (hit1, which1) = store.allow_hierarchical(&inner, &outer);
+        assert!(matches!(hit1, ApprovalHit::Once));
+        assert_eq!(which1, Some("inner"));
+        let (hit2, which2) = store.allow_hierarchical(&inner, &outer);
+        assert!(matches!(hit2, ApprovalHit::Denied));
+        assert!(which2.is_none());
+    }
+
+    #[test]
+    fn hierarchical_approvals_outer_session_persists() {
+        let mut store = ApprovalsStore::new();
+        let inner = ApprovalKey::new("devit.tool_call:shell_exec", None);
+        let outer = ApprovalKey::new("devit.tool_call", None);
+        store.approve("session", outer.clone()).unwrap();
+        let (hit1, which1) = store.allow_hierarchical(&inner, &outer);
+        assert!(matches!(hit1, ApprovalHit::Session));
+        assert_eq!(which1, Some("outer"));
+        let (hit2, which2) = store.allow_hierarchical(&inner, &outer);
+        assert!(matches!(hit2, ApprovalHit::Session));
+        assert_eq!(which2, Some("outer"));
     }
 }
 
