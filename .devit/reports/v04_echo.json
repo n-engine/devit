@@ -1,2 +1,0 @@
-{"payload":{"tools":["devit.tool_list","devit.tool_call","plugin.invoke","server.context_head","server.health","server.stats","server.stats.reset","server.policy","echo"]},"type":"handshake.ok"}
-{"payload":{"name":"devit.tool_call","result":{"echo":"token REDACTED","redacted":true}},"type":"tool.result"}

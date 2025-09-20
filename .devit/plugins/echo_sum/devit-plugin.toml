@@ -1,6 +1,0 @@
-id = "echo_sum"
-name = "Echo Sum"
-wasm = "echo_sum.wasm"
-version = "0.1.0"
-allowed_dirs = []
-env = []
