@@ -134,7 +134,7 @@ fn headless_open_log_prints_last_event() {
 }
 
 #[test]
-fn headless_open_log_seek_last_selects_earlier_event() {
+fn headless_open_log_seek_last_limits_window() {
     with_timeout(Duration::from_secs(5), || {
         let dir = tempfile::tempdir().unwrap();
         let journal = dir.path().join("journal.jsonl");
@@ -152,8 +152,27 @@ fn headless_open_log_seek_last_selects_earlier_event() {
         let assert = cmd.assert().success();
         let output = assert.get_output();
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("\"n\": 1"), "stdout: {stdout}");
-        assert!(!stdout.contains("\"n\": 2"), "stdout: {stdout}");
+        assert!(stdout.contains("\"n\": 2"), "stdout: {stdout}");
+        assert!(!stdout.contains("\"n\": 1"), "stdout: {stdout}");
+    });
+}
+
+#[test]
+fn headless_open_log_truncates_large_event() {
+    with_timeout(Duration::from_secs(5), || {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = dir.path().join("journal.jsonl");
+        let mut f = File::create(&journal).unwrap();
+        let payload = format!("{{\"type\":\"blob\",\"data\":\"{}\"}}", "a".repeat(5000));
+        writeln!(f, "{}", payload).unwrap();
+
+        let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
+        cmd.env("DEVIT_TUI_HEADLESS", "1");
+        cmd.timeout(Duration::from_secs(5));
+        cmd.arg("--open-log").arg(&journal);
+        let assert = cmd.assert().success();
+        let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+        assert!(stdout.contains("... (truncated)"), "stdout: {stdout}");
     });
 }
 

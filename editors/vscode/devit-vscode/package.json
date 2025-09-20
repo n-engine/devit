@@ -5,6 +5,13 @@
   "version": "0.1.0",
   "publisher": "devit",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/n-engine/devit.git"
+  },
+  "repository": {
+	"type": "git", "url": "https://github.com/<org>/<repo>.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -19,19 +26,52 @@
         "title": "DevIt: Show Panel"
       },
       {
-        "command": "devit.approveLastRequest",
+        "command": "devit.approveLast",
         "title": "DevIt: Approve Last Request"
       },
       {
         "command": "devit.runRecipe",
         "title": "DevIt: Run Recipe…"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "devit.showPanel" },
+        { "command": "devit.approveLast" },
+        { "command": "devit.runRecipe" }
+      ]
+    },
+    "configuration": {
+      "title": "DevIt",
+      "properties": {
+        "devit.devitBin": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `devit` binary (empty uses PATH / workspace targets)."
+        },
+        "devit.mcpdBin": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `devit-mcpd` binary (empty uses PATH / workspace targets)."
+        },
+        "devit.netPolicy": {
+          "type": "string",
+          "enum": ["off", "full"],
+          "default": "off",
+          "description": "Network policy passed to devit-mcpd (--net off|full)."
+        },
+        "devit.profile": {
+          "type": "string",
+          "enum": ["safe", "std", "danger"],
+          "default": "std",
+          "description": "Approval profile passed to devit-mcpd (--profile safe|std|danger)."
+        }
+      }
+    }
   },
   "scripts": {
     "clean": "rimraf out",
-    "compile": "tsc -p .",
-    "build": "npm run clean && npm run compile",
+    "build": "tsc -p .",
     "lint": "eslint .",
     "watch": "tsc -p . -w",
     "package": "vsce package",

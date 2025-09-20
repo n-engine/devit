@@ -22,6 +22,9 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 use ratatui::Terminal;
 use serde::Deserialize;
 
+const DEFAULT_MAX_EVENTS: usize = 100;
+const MAX_EVENT_DETAIL_BYTES: usize = 4096;
+
 #[derive(Parser, Debug, Clone)]
 #[command(name = "devit-tui", version, about = "DevIt TUI: timeline + statusbar")]
 struct Args {
@@ -41,7 +44,7 @@ struct Args {
     #[arg(long = "open-log", value_name = "PATH")]
     open_log: Option<PathBuf>,
 
-    /// Select the Nth event from the end (0 = last)
+    /// Limit timeline to the last N events (default 100)
     #[arg(long = "seek-last", value_name = "N")]
     seek_last: Option<usize>,
 
@@ -61,10 +64,16 @@ struct App {
     help: bool,
     diff: Option<DiffState>,
     recipes: RecipeState,
+    max_events: usize,
 }
 
 impl App {
-    fn new(journal_path: Option<PathBuf>, follow: bool, base_status: String) -> Self {
+    fn new(
+        journal_path: Option<PathBuf>,
+        follow: bool,
+        base_status: String,
+        max_events: usize,
+    ) -> Self {
         Self {
             lines: Vec::new(),
             selected: 0,
@@ -76,6 +85,7 @@ impl App {
             help: false,
             diff: None,
             recipes: RecipeState::default(),
+            max_events: max_events.max(1),
         }
     }
 
@@ -90,6 +100,7 @@ impl App {
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
         self.lines = buf.lines().map(|s| s.to_string()).collect();
+        self.enforce_capacity();
         self.last_size = meta.len();
         self.select_from_end(seek_last);
         self.ensure_selection_in_bounds();
@@ -119,6 +130,10 @@ impl App {
                     self.lines.push(line);
                 }
                 self.last_size = meta.len();
+                let removed = self.enforce_capacity();
+                if removed > 0 {
+                    self.selected = self.selected.saturating_sub(removed);
+                }
                 if self.follow {
                     self.select_from_end(Some(0));
                 } else {
@@ -145,6 +160,15 @@ impl App {
         } else if self.selected >= self.lines.len() {
             self.selected = self.lines.len() - 1;
         }
+    }
+
+    fn enforce_capacity(&mut self) -> usize {
+        let mut removed = 0usize;
+        while self.lines.len() > self.max_events {
+            self.lines.remove(0);
+            removed += 1;
+        }
+        removed
     }
 
     fn refresh_status(&mut self) {
@@ -188,9 +212,16 @@ impl App {
         let Some(line) = self.selected_line() else {
             return "No events loaded".into();
         };
-        match serde_json::from_str::<serde_json::Value>(line) {
+        let pretty = match serde_json::from_str::<serde_json::Value>(line) {
             Ok(json) => serde_json::to_string_pretty(&json).unwrap_or_else(|_| line.to_string()),
             Err(_) => line.to_string(),
+        };
+        if pretty.len() > MAX_EVENT_DETAIL_BYTES {
+            let mut truncated = pretty[..MAX_EVENT_DETAIL_BYTES].to_string();
+            truncated.push_str("\n... (truncated)");
+            truncated
+        } else {
+            pretty
         }
     }
 
@@ -807,9 +838,16 @@ fn run(args: Args) -> Result<()> {
     let headless = headless_mode();
     let initial_follow = if headless { false } else { args.follow };
 
+    let max_events = args.seek_last.unwrap_or(DEFAULT_MAX_EVENTS).max(1);
+
     let base_status = best_effort_status();
-    let mut app = App::new(journal_path.clone(), initial_follow, base_status);
-    app.load_initial(args.seek_last)?;
+    let mut app = App::new(
+        journal_path.clone(),
+        initial_follow,
+        base_status,
+        max_events,
+    );
+    app.load_initial(Some(0))?;
 
     if let Some(open_diff) = args.open_target.as_ref() {
         let source = if open_diff.as_os_str() == "-" {
