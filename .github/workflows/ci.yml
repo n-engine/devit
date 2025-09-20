@@ -31,6 +31,15 @@ jobs:
             echo "$files" | sed -n '1,50p' >&2
             exit 1
           fi
+      - name: "guard: no tracked files under home/"
+        run: |
+          set -euo pipefail
+          files=$(git ls-files home || true)
+          if [ -n "$files" ]; then
+            echo "home/ contains tracked files (unexpected):" >&2
+            echo "$files" | sed -n '1,50p' >&2
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt

@@ -14,7 +14,6 @@ bench/instances_auto_*.txt
 !/.devit/plugins/.gitkeep
 **/.devit/
 # Re-include root-level tracked files under .devit/
-!/.devit
 !/.devit/recipes/
 !/.devit/recipes/*.yaml
 !/.devit/scripts/
