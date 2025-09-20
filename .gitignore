@@ -9,6 +9,8 @@ bench/instances_auto_*.txt
 .devit/
 !/.devit/recipes/
 !/.devit/recipes/*.yaml
+!/.devit/scripts/
+!/.devit/scripts/ensure_sarif.sh
 !/.devit/plugins/.gitkeep
 **/.devit/
 # Local scratch artifacts

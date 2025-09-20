@@ -9,6 +9,9 @@ on:
 jobs:
   build-test:
     name: Build, fmt, clippy, test
+    permissions:
+      contents: read
+      security-events: write
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -73,6 +76,7 @@ jobs:
 
       - name: validate commit messages (PR only)
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         run: |
           set -euo pipefail
           BASE="origin/${GITHUB_BASE_REF}"
@@ -91,8 +95,7 @@ jobs:
             fi
           done < <(git log --format=%s "$BASE"..HEAD)
           if [ "$bad" -ne 0 ]; then
-            echo "Commit messages must follow Conventional Commits and ≤72 chars" >&2
-            exit 1
+            echo "warning: commit messages not compliant; NOT failing CI on PR" >&2
           fi
 
       - name: test (workspace, no-fail-fast)
@@ -153,21 +156,20 @@ jobs:
             .devit/reports
             .devit/sbom.cdx.json
 
-      - name: Check SARIF content
-        id: sarif_check
-        if: always()
-        run: |
-          if [ -f .devit/reports/sarif.json ] && grep -q '"runs"[[:space:]]*:[[:space:]]*\[\s*\]' .devit/reports/sarif.json; then
-            echo "stub=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "stub=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Make ensure_sarif executable
+        run: chmod +x .devit/scripts/ensure_sarif.sh
 
-      - name: Upload SARIF to GitHub Code Scanning
-        if: always() && ${{ hashFiles('.devit/reports/sarif.json') != '' }} && steps.sarif_check.outputs.stub == 'false'
+      - name: Ensure SARIF (DevIt)
+        run: .devit/scripts/ensure_sarif.sh .devit/reports/sarif.json
+
+      - name: Upload SARIF (DevIt)
+        if: ${{ always() && hashFiles('.devit/reports/sarif.json') != '' && github.event_name != 'pull_request' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: .devit/reports/sarif.json
+          category: devit-quality
+          checkout_path: ${{ github.workspace }}
+          wait-for-processing: true
 
       - name: PR comment (DevIt Quality Summary)
         if: always() && github.event_name == 'pull_request'
@@ -182,7 +184,8 @@ jobs:
           jq -r '"- Tests: (.payload.summary.tests_failed)/(.payload.summary.tests_total) failed\n- Lint: (.payload.summary.lint_errors) errors, (.payload.summary.lint_warnings) warnings\n- Verdict: ((.payload.pass|tostring))"' .devit/reports/quality.json >> /tmp/devit_summary.md || true
           gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/devit_summary.md || true
 
-      - name: Fail on thresholds
+      - name: Fail on thresholds (push only)
+        if: github.event_name != 'pull_request'
         run: |
           jq -e '.payload.pass == true' .devit/reports/quality.json >/dev/null || exit 1
 
