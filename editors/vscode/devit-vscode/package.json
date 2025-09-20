@@ -34,6 +34,27 @@
         "title": "DevIt: Run Recipe…"
       }
     ],
+    "codeActions": [
+      {
+        "languages": [
+          "toml",
+          "rust",
+          "json",
+          "jsonc",
+          "javascript",
+          "javascriptreact",
+          "typescript",
+          "typescriptreact",
+          "yaml"
+        ],
+        "actions": [
+          {
+            "kind": "quickfix",
+            "title": "DevIt Recipes"
+          }
+        ]
+      }
+    ],
     "menus": {
       "commandPalette": [
         { "command": "devit.showPanel" },

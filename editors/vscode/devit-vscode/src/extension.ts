@@ -51,6 +51,7 @@ let mcpdReadyPromise: Promise<void> | undefined;
 let mcpdReadyError: Error | undefined;
 let workspaceRoot: string | undefined;
 let currentConfig: DevItConfig | undefined;
+let recipeCodeActionRegistration: vscode.Disposable | undefined;
 
 const APPROVE_COMMAND = 'devit.approveLast';
 
@@ -141,7 +142,8 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     if (workspaceRoot) {
-        registerRecipeCodeActions(context, workspaceRoot);
+        recipeCodeActionRegistration = registerRecipeCodeActions(workspaceRoot);
+        context.subscriptions.push(recipeCodeActionRegistration);
     }
 
     const configListener = vscode.workspace.onDidChangeConfiguration((event) => {
@@ -158,12 +160,33 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    const workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        const nextRoot = resolveWorkspaceRoot();
+        if (nextRoot === workspaceRoot) {
+            return;
+        }
+        workspaceRoot = nextRoot;
+        recipeCodeActionRegistration?.dispose();
+        recipeCodeActionRegistration = undefined;
+        if (workspaceRoot) {
+            const config = currentConfig ?? readDevItConfig();
+            currentConfig = config;
+            setupMcpd(config);
+            recipeCodeActionRegistration = registerRecipeCodeActions(workspaceRoot);
+            context.subscriptions.push(recipeCodeActionRegistration);
+        } else {
+            mcpdClient?.dispose();
+            mcpdClient = undefined;
+        }
+    });
+
     context.subscriptions.push(
         showPanelDisposable,
         approveDisposable,
         runRecipeDisposable,
         runRecipeDirectDisposable,
         configListener,
+        workspaceListener,
         outputChannel,
         {
             dispose: () => {
@@ -482,10 +505,7 @@ function resolveBinary(name: string, root: string, override?: string): string {
     return candidates[candidates.length - 1];
 }
 
-function registerRecipeCodeActions(
-    context: vscode.ExtensionContext,
-    root: string
-): void {
+function registerRecipeCodeActions(root: string): vscode.Disposable {
     const provider = new RecipeCodeActionProvider(root);
     const selector: vscode.DocumentSelector = [
         { language: 'rust', scheme: 'file' },
@@ -495,41 +515,63 @@ function registerRecipeCodeActions(
         { language: 'javascriptreact', scheme: 'file' },
         { language: 'typescript', scheme: 'file' },
         { language: 'typescriptreact', scheme: 'file' },
+        { language: 'yaml', scheme: 'file' },
+        { language: 'toml', scheme: 'file' },
+        { language: 'plaintext', scheme: 'file' },
+        { pattern: '**/Cargo.toml' },
     ];
     const metadata: vscode.CodeActionProviderMetadata = {
         providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
     };
-    context.subscriptions.push(
-        vscode.languages.registerCodeActionsProvider(selector, provider, metadata)
-    );
+    return vscode.languages.registerCodeActionsProvider(selector, provider, metadata);
 }
 
 class RecipeCodeActionProvider implements vscode.CodeActionProvider {
     constructor(private readonly root: string) {}
 
     provideCodeActions(
-        document: vscode.TextDocument
+        document: vscode.TextDocument,
+        _range: vscode.Range | vscode.Selection,
+        context: vscode.CodeActionContext
     ): vscode.ProviderResult<vscode.CodeAction[]> {
+        if (context.only && !context.only.intersects(vscode.CodeActionKind.QuickFix)) {
+            return undefined;
+        }
         const actions: vscode.CodeAction[] = [];
         const filePath = document.fileName;
         const fileName = path.basename(filePath).toLowerCase();
         const relPath = path.relative(this.root, filePath).toLowerCase();
+        const hasWorkflow = this.repoHasWorkflow();
 
         if (fileName === 'cargo.toml') {
-            actions.push(this.createRecipeAction('Run recipe: add-ci', 'add-ci'));
+            this.ensureRecipeAction(actions, 'DevIt: add-ci', 'add-ci');
+        }
+
+        if (!hasWorkflow && fileName.endsWith('.rs')) {
+            this.ensureRecipeAction(actions, 'DevIt: add-ci', 'add-ci');
         }
 
         if (this.matchesJest(relPath, fileName)) {
-            actions.push(
-                this.createRecipeAction('Run recipe: migrate-jest-vitest', 'migrate-jest-vitest')
-            );
+            this.ensureRecipeAction(actions, 'DevIt: migrate-jest-vitest', 'migrate-jest-vitest');
         }
 
+        if (!hasWorkflow && this.isCiLanguage(document.languageId)) {
+            this.ensureRecipeAction(actions, 'DevIt: add-ci', 'add-ci');
+        }
+
+        if (actions.length > 0) {
+            outputChannel.appendLine(
+                `CodeAction(s): ${actions.length} for ${document.fileName}`
+            );
+        }
         return actions;
     }
 
     private matchesJest(relPath: string, fileName: string): boolean {
         if (fileName.startsWith('jest')) {
+            return true;
+        }
+        if (fileName.includes('.test.')) {
             return true;
         }
         return relPath.includes('jest');
@@ -544,6 +586,36 @@ class RecipeCodeActionProvider implements vscode.CodeActionProvider {
         };
         action.isPreferred = true;
         return action;
+    }
+
+    private ensureRecipeAction(
+        actions: vscode.CodeAction[],
+        title: string,
+        recipeId: string
+    ): void {
+        const existing = actions.some((action) => action.command?.arguments?.[0] === recipeId);
+        if (!existing) {
+            actions.push(this.createRecipeAction(title, recipeId));
+        }
+    }
+
+    private repoHasWorkflow(): boolean {
+        const workflowsDir = path.join(this.root, '.github', 'workflows');
+        try {
+            const entries = fs.readdirSync(workflowsDir, { withFileTypes: true });
+            return entries.some((entry) => {
+                if (entry.isFile()) {
+                    return entry.name.endsWith('.yml') || entry.name.endsWith('.yaml');
+                }
+                return false;
+            });
+        } catch {
+            return false;
+        }
+    }
+
+    private isCiLanguage(languageId: string): boolean {
+        return languageId === 'yaml' || languageId === 'json' || languageId === 'jsonc';
     }
 }
 
