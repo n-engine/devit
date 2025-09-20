@@ -153,8 +153,18 @@ jobs:
             .devit/reports
             .devit/sbom.cdx.json
 
+      - name: Check SARIF content
+        id: sarif_check
+        if: always()
+        run: |
+          if [ -f .devit/reports/sarif.json ] && grep -q '"runs"[[:space:]]*:[[:space:]]*\[\s*\]' .devit/reports/sarif.json; then
+            echo "stub=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stub=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload SARIF to GitHub Code Scanning
-        if: always() && ${{ hashFiles('.devit/reports/sarif.json') != '' }}
+        if: always() && ${{ hashFiles('.devit/reports/sarif.json') != '' }} && steps.sarif_check.outputs.stub == 'false'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: .devit/reports/sarif.json
