@@ -13,9 +13,6 @@ members = [
     "crates/tools",
 ]
 resolver = "2"
-exclude = [
-    "examples/devit-agent-mvp",
-]
 
 
 [workspace.package]

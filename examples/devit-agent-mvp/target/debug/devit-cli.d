@@ -1,1 +1,0 @@
-/home/naskel/workspace/devIt/examples/devit-agent-mvp/target/debug/devit-cli: /home/naskel/workspace/devIt/examples/devit-agent-mvp/devit_api.schema.json /home/naskel/workspace/devIt/examples/devit-agent-mvp/src/main.rs
