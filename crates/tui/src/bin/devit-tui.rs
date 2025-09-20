@@ -51,6 +51,14 @@ struct Args {
     /// List available recipes as JSON (headless helper)
     #[arg(long = "list-recipes", default_value_t = false)]
     list_recipes: bool,
+
+    /// Run a recipe by id (optionally with --dry-run)
+    #[arg(long = "run-recipe", value_name = "ID")]
+    run_recipe: Option<String>,
+
+    /// Perform a dry-run for --run-recipe (no changes, preview diff)
+    #[arg(long = "dry-run", default_value_t = false)]
+    dry_run: bool,
 }
 
 struct App {
@@ -612,13 +620,81 @@ fn list_recipes_headless() -> Result<()> {
         if !output.stderr.trim().is_empty() {
             eprintln!("{}", output.stderr.trim());
         }
-        bail!(
-            "devit recipe list exited with status {}",
-            output.status.code().unwrap_or(-1)
+        // Normalized error for scripting
+        let _ = writeln!(
+            std::io::stderr(),
+            "{}",
+            serde_json::json!({
+                "type":"tool.error",
+                "error":{ "recipe_integration_failed": true, "reason":"list_failed", "status": output.status.code().unwrap_or(-1) }
+            })
         );
+        bail!("devit recipe list failed");
     }
     print!("{}", output.stdout);
     Ok(())
+}
+
+fn run_recipe_headless(id: &str, dry_run: bool) -> Result<i32> {
+    let mut args = vec!["recipe", "run", id];
+    if dry_run {
+        args.push("--dry-run");
+    }
+    let output = run_devit_command(args)?;
+
+    if let Some(info) = detect_approval_required(&output) {
+        // Surface approval_required as-is by passing through stdout/stderr, plus normalized code 2
+        if !output.stdout.trim().is_empty() {
+            print!("{}", output.stdout);
+        }
+        if !output.stderr.trim().is_empty() {
+            eprintln!("{}", output.stderr);
+        }
+        let _ = writeln!(
+            std::io::stderr(),
+            "{}",
+            serde_json::json!({
+                "type":"tui.notice",
+                "payload":{ "approval_required": true, "recipe": id, "tool": info.tool, "reason": info.reason }
+            })
+        );
+        return Ok(2);
+    }
+
+    if !output.success() {
+        if !output.stdout.trim().is_empty() {
+            print!("{}", output.stdout);
+        }
+        if !output.stderr.trim().is_empty() {
+            eprintln!("{}", output.stderr);
+        }
+        let _ = writeln!(
+            std::io::stderr(),
+            "{}",
+            serde_json::json!({
+                "type":"tool.error",
+                "error":{ "recipe_integration_failed": true, "reason":"run_failed", "status": output.status.code().unwrap_or(-1) }
+            })
+        );
+        return Ok(output.status.code().unwrap_or(1));
+    }
+
+    // Success: print through devit CLI output
+    if !output.stdout.trim().is_empty() {
+        print!("{}", output.stdout);
+    }
+    // If dry-run but no diff detected, emit a normalized note (non-fatal)
+    if dry_run && detect_diff_path(&output).is_none() {
+        let _ = writeln!(
+            std::io::stderr(),
+            "{}",
+            serde_json::json!({
+                "type":"tool.error",
+                "error":{ "recipe_integration_failed": true, "reason":"no_patch" }
+            })
+        );
+    }
+    Ok(0)
 }
 
 fn collect_output_lines(output: &CommandOutput) -> Vec<String> {
@@ -820,6 +896,75 @@ fn run(args: Args) -> Result<()> {
     if args.list_recipes {
         list_recipes_headless()?;
         return Ok(());
+    }
+
+    if let Some(id) = args.run_recipe.as_deref() {
+        let headless = headless_mode();
+        if headless {
+            let code = run_recipe_headless(id, args.dry_run)?;
+            std::process::exit(code);
+        }
+        // Interactive path: execute dry-run, capture diff, open viewer if present, allow Apply
+        let mut tui_app = App::new(None, false, best_effort_status(), DEFAULT_MAX_EVENTS);
+        // Simulate the list toggle view state
+        tui_app.recipes.visible = true;
+        // Ensure entries include the target so status line can show meaningful info
+        tui_app.recipes.entries = vec![RecipeEntry { id: id.to_string(), name: id.to_string(), description: None }];
+        tui_app.recipes.selected = 0;
+        let mut cmd = vec!["recipe", "run", id];
+        if args.dry_run { cmd.push("--dry-run"); }
+        match run_devit_command(cmd) {
+            Ok(output) => {
+                tui_app.recipes.output = collect_output_lines(&output);
+                tui_app.recipes.diff_path = detect_diff_path(&output);
+                if output.success() {
+                    tui_app.recipes.mode = RecipeMode::DryRunReady { id: id.to_string() };
+                    if let Some(path) = tui_app.recipes.diff_path.clone() {
+                        match load_diff(&path, DiffSource::Path, 1_048_576) {
+                            Ok(diff_state) => {
+                                tui_app.status = diff_state.status_line();
+                                tui_app.base_status = tui_app.status.clone();
+                                tui_app.diff = Some(diff_state);
+                                tui_app.recipes.visible = false;
+                                tui_app.recipes.info = Some(format!("Diff opened for recipe {}", id));
+                            }
+                            Err(err) => {
+                                let msg = match err {
+                                    DiffError::NotFound => "diff file not found".to_string(),
+                                    DiffError::TooLarge => "diff too large".to_string(),
+                                    DiffError::Parse(e) => format!("diff parse error: {}", e),
+                                };
+                                tui_app.recipes.error = Some(msg);
+                            }
+                        }
+                    } else if args.dry_run {
+                        tui_app.recipes.info = Some("Dry-run succeeded (no patch to preview)".to_string());
+                    }
+                } else if let Some(_info) = detect_approval_required(&output) {
+                    tui_app.recipes.mode = RecipeMode::DryRunReady { id: id.to_string() };
+                    tui_app.recipes.error = Some("Approval required before running".to_string());
+                } else {
+                    tui_app.recipes.mode = RecipeMode::Idle;
+                    tui_app.recipes.error = Some("Recipe run failed".to_string());
+                }
+            }
+            Err(err) => {
+                tui_app.recipes.error = Some(format!("Failed to run devit: {}", err));
+                tui_app.recipes.mode = RecipeMode::Idle;
+            }
+        }
+        tui_app.refresh_status();
+
+        // Enter TUI once to show either diff or recipes view with output
+        let guard = TerminalGuard::enter()?;
+        let backend = CrosstermBackend::new(std::io::stdout());
+        let mut terminal = Terminal::new(backend)?;
+        terminal.hide_cursor()?;
+        let mut control = LoopControl::interactive(false)?;
+        let result = run_app(&mut terminal, &mut tui_app, &mut control);
+        terminal.show_cursor().ok();
+        drop(guard);
+        return result;
     }
 
     let journal_path = args.open_log.clone().or_else(|| args.journal_path.clone());
