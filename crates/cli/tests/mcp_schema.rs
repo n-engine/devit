@@ -2,7 +2,13 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
 fn spawn_server() -> std::process::Child {
-    let exe = env!("CARGO_BIN_EXE_devit-mcpd");
+    let Some(exe) = option_env!("CARGO_BIN_EXE_devit-mcpd") else {
+        eprintln!("skip: devit-mcpd binary not available (experimental features off)");
+        // Spawn a dummy `cat` to satisfy return type; tests will short-circuit before using it.
+        return Command::new(if cfg!(target_os = "windows") { "cmd" } else { "true" })
+            .spawn()
+            .expect("spawn noop");
+    };
     Command::new(exe)
         .arg("--yes")
         .stdin(Stdio::piped())
@@ -23,6 +29,10 @@ fn roundtrip(child: &mut std::process::Child, line: &str) -> String {
 
 #[test]
 fn devit_tool_call_schema_errors() {
+    let Some(_exe) = option_env!("CARGO_BIN_EXE_devit-mcpd") else {
+        eprintln!("skip: devit-mcpd binary not available; test skipped");
+        return;
+    };
     let mut child = spawn_server();
     // missing tool
     let out = roundtrip(
@@ -45,6 +55,10 @@ fn devit_tool_call_schema_errors() {
 
 #[test]
 fn plugin_invoke_schema_errors() {
+    let Some(_exe) = option_env!("CARGO_BIN_EXE_devit-mcpd") else {
+        eprintln!("skip: devit-mcpd binary not available; test skipped");
+        return;
+    };
     let mut child = spawn_server();
     // missing id
     let out = roundtrip(
