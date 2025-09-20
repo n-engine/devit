@@ -13,6 +13,12 @@ bench/instances_auto_*.txt
 !/.devit/scripts/ensure_sarif.sh
 !/.devit/plugins/.gitkeep
 **/.devit/
+# Re-include root-level tracked files under .devit/
+!/.devit
+!/.devit/recipes/
+!/.devit/recipes/*.yaml
+!/.devit/scripts/
+!/.devit/scripts/ensure_sarif.sh
 # Local scratch artifacts
 .screenshot/
 NOTES.md
