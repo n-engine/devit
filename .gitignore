@@ -35,3 +35,5 @@ dist/**
 examples/plugins/**/target/
 /AGENTS.md
 editors/vscode/devit-vscode/*.vsix
+/# Guard against accidental absolute path mirrors
+/home/

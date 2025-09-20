@@ -1,0 +1,1 @@
+{"recipes":[{"description":"Create a starter GitHub Actions CI workflow.","id":"add-ci","name":"Add CI workflow"},{"description":"Checklist to migrate a project from Jest to Vitest.","id":"migrate-jest-vitest","name":"Migrate Jest tests to Vitest"},{"description":"Guidance for upgrading the toolchain to Rust 1.81.","id":"rust-upgrade-1.81","name":"Rust upgrade 1.81"}]}

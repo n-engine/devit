@@ -1,0 +1,15 @@
+DevIt TUI: timeline + statusbar
+
+Usage: devit-tui [OPTIONS]
+
+Options:
+      --journal-path <PATH>  Path to journal JSONL (e.g., .devit/journal.jsonl)
+      --follow               Follow new lines appended to journal
+      --open <PATH>          Open a unified diff (path or '-' for stdin)
+      --open-log <PATH>      Open a journal log (path or '-' for stdin)
+      --seek-last <N>        Limit timeline to the last N events (default 100)
+      --list-recipes         List available recipes as JSON (headless helper)
+      --run-recipe <ID>      Run a recipe by id (optionally with --dry-run)
+      --dry-run              Perform a dry-run for --run-recipe (no changes, preview diff)
+  -h, --help                 Print help
+  -V, --version              Print version

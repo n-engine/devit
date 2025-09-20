@@ -1,0 +1,11 @@
+{
+  "T1": {"status":"GREEN","reason":"binaire présent + headless OK"},
+  "T2": {"status":"GREEN","reason":"handshake expose server.approve"},
+  "T3": {"status":"GREEN","reason":"devit-tui --open-diff OK"},
+  "T4": {"status":"GREEN","reason":"devit-tui --open-log OK"},
+  "T5": {"status":"YELLOW","reason":"extension présente (build .vsix non vérifié)"},
+  "T6": {"status":"YELLOW","reason":"traces CodeActions détectées"},
+  "T7": {"status":"GREEN","reason":"runner + 3 recettes détectées"},
+  "T8": {"status":"YELLOW","reason":"indices d’intégration présents"},
+  "T9": {"status":"GREEN","reason":"docs TUI + recipes présentes"},
+  "T10": {"status":"YELLOW","reason":"jobs packaging détectés"}}

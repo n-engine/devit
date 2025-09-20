@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "pass": true,
+  "summary": {
+    "duration_ms": 0,
+    "lint_errors": 0,
+    "lint_warnings": 0,
+    "notes": [],
+    "sarif_rules": 0,
+    "tests_failed": 0,
+    "tests_total": 36
+  }
+}

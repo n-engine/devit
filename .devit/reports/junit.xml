@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="cargo-impacted" tests="36" failures="0" time="7.136">
+  </testsuite>
+</testsuites>

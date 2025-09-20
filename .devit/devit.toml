@@ -1,0 +1,18 @@
+[quality]
+allow_lint_warnings = true
+fail_on_missing_reports = false
+max_lint_errors = 0
+max_test_failures = 0
+
+[secrets]
+env_allow = ["PATH", "HOME", "RUST_BACKTRACE"]
+scan = true
+placeholder = "REDACTED"
+patterns = [
+  "(?i)aws_[a-z_]*=\\S{16,}",
+  "(?i)ghp_[0-9a-z]{36,}",
+  "(?i)github_token=\\S{16,}",
+  "(?i)api[_-]?key\s*[:=]\s*\S{16,}",
+  "(?i)secret\s*[:=]\s*\S{16,}",
+  "(?i)token\s*[:=]\s*\S{24,}"
+]

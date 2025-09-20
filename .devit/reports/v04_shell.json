@@ -1,0 +1,2 @@
+{"payload":{"tools":["devit.tool_list","devit.tool_call","plugin.invoke","server.context_head","server.health","server.stats","server.stats.reset","server.policy","echo"]},"type":"handshake.ok"}
+{"payload":{"name":"devit.tool_call","redacted":true,"redacted_patterns":["(?i)ghp_[0-9a-z]{16,}"],"result":{"exit_code":0,"output":"token REDACTED\n"}},"type":"tool.result"}
