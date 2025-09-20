@@ -169,7 +169,7 @@ jobs:
             echo '{"payload":{"pass":false,"summary":{"tests_total":0,"tests_failed":0,"lint_errors":0,"lint_warnings":0}}}' > .devit/reports/quality.json
           fi
           jq -r '"- Tests: (.payload.summary.tests_failed)/(.payload.summary.tests_total) failed\n- Lint: (.payload.summary.lint_errors) errors, (.payload.summary.lint_warnings) warnings\n- Verdict: ((.payload.pass|tostring))"' .devit/reports/quality.json >> /tmp/devit_summary.md || true
-          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/devit_summary.md
+          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/devit_summary.md || true
 
       - name: Fail on thresholds
         run: |
