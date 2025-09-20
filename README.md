@@ -188,6 +188,18 @@ Français (FR)
   - `F1` affiche l’aide contextuelle, `q` quitte.
 - Mode headless : `DEVIT_TUI_HEADLESS=1 devit-tui --open-log .devit/journal.jsonl` imprime l’event sélectionné (compatible CI/scripts).
 
+Recettes (TUI ↔ CLI)
+- Lister les recettes (headless‑friendly):
+  - `DEVIT_TUI_HEADLESS=1 cargo run -p devit-tui -- --list-recipes | jq`
+- Exécuter une recette en dry‑run (headless):
+  - `DEVIT_TUI_HEADLESS=1 cargo run -p devit-tui -- --run-recipe add-ci --dry-run`
+  - Codes de sortie: 0 = succès, 2 = `approval_required` (rejouer après approbation)
+  - Erreurs normalisées sur stderr: `{ error: { recipe_integration_failed:true, reason:"list_failed|run_failed|no_patch" } }`
+- Interactif:
+  - `R` → liste des recettes → `Enter` lance un dry‑run
+  - Si un patch est généré, le viewer diff s’ouvre (puis `A` pour appliquer)
+  - `--run-recipe <id> --dry-run` ouvre directement la preview du diff si disponible
+
 Plugins (WASM/WASI)
 - Expérimental (feature-gated). Utiliser `--features experimental`.
 - Registry: `.devit/plugins/<id>/devit-plugin.toml` (ou `DEVIT_PLUGINS_DIR`).

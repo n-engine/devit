@@ -1,6 +1,6 @@
 # Recipes YAML Reference
 
-DevIt recipes live under `.devit/recipes/` and power the TUI (`R` panel), VS Code commands, and the `devit recipe` CLI. This page documents the accepted fields and bundled starters.
+DevIt recipes live under `.devit/recipes/` and power the TUI (`R` panel), VS Code commands, the `devit recipe` CLI, and TUI headless helpers. This page documents the accepted fields and bundled starters.
 
 ## Minimal schema
 
@@ -56,3 +56,21 @@ devit recipe run add-ci --dry-run
 ```
 
 The same actions are exposed in the TUI (press `R`) and the VS Code extension (“DevIt: Run Recipe…” command).
+
+## TUI helpers (CLI integration)
+
+Headless (CI‑friendly):
+
+```bash
+DEVIT_TUI_HEADLESS=1 devit-tui --list-recipes | jq
+DEVIT_TUI_HEADLESS=1 devit-tui --run-recipe add-ci --dry-run
+```
+
+Conventions:
+- Exit 0 si succès du dry‑run; 2 si `approval_required` détecté (le JSON d’approval est relayé tel quel).
+- Erreurs normalisées (stderr JSON):
+  - `recipe_integration_failed:true, reason:"list_failed"|"run_failed"|"no_patch"`.
+
+Interactif:
+- `R` ouvre la liste des recettes → `Enter` lance un dry‑run.
+- Si un patch est généré, le viewer diff s’ouvre; `A` applique (respecte les approvals/profils).
