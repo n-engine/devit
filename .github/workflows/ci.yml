@@ -153,7 +153,7 @@ jobs:
             .devit/sbom.cdx.json
 
       - name: Upload SARIF to GitHub Code Scanning
-        if: always()
+        if: always() && ${{ hashFiles('.devit/reports/sarif.json') != '' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: .devit/reports/sarif.json
