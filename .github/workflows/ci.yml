@@ -84,7 +84,8 @@ jobs:
             if [[ "$subject" =~ ^Merge\ .* || "$subject" =~ ^Revert\ .* ]]; then
               continue
             fi
-            if [[ ! "$subject" =~ ^(feat|fix|chore|docs|test|refactor)(\(.*\))?:\ .{1,72}$ ]]; then
+            # Accept common Conventional Commit types (extend to include ci and release)
+            if [[ ! "$subject" =~ ^(feat|fix|chore|docs|test|refactor|ci|release)(\(.*\))?:\ .{1,72}$ ]]; then
               echo "Invalid commit subject: $subject" >&2
               bad=1
             fi
