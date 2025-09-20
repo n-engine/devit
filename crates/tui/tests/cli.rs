@@ -119,8 +119,8 @@ fn headless_open_log_prints_last_event() {
         let dir = tempfile::tempdir().unwrap();
         let journal = dir.path().join("journal.jsonl");
         let mut f = File::create(&journal).unwrap();
-        writeln!(f, "{}", r#"{"type":"test","n":1}"#).unwrap();
-        writeln!(f, "{}", r#"{"type":"test","n":2}"#).unwrap();
+        writeln!(f, "{{\"type\":\"test\",\"n\":1}}").unwrap();
+        writeln!(f, "{{\"type\":\"test\",\"n\":2}}").unwrap();
 
         let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
         cmd.env("DEVIT_TUI_HEADLESS", "1");
@@ -139,8 +139,8 @@ fn headless_open_log_seek_last_limits_window() {
         let dir = tempfile::tempdir().unwrap();
         let journal = dir.path().join("journal.jsonl");
         let mut f = File::create(&journal).unwrap();
-        writeln!(f, "{}", r#"{"type":"test","n":1}"#).unwrap();
-        writeln!(f, "{}", r#"{"type":"test","n":2}"#).unwrap();
+        writeln!(f, "{{\"type\":\"test\",\"n\":1}}").unwrap();
+        writeln!(f, "{{\"type\":\"test\",\"n\":2}}").unwrap();
 
         let mut cmd = assert_cmd::Command::cargo_bin("devit-tui").unwrap();
         cmd.env("DEVIT_TUI_HEADLESS", "1");

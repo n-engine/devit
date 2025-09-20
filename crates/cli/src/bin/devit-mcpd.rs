@@ -243,14 +243,13 @@ fn real_main() -> Result<()> {
                 if (policy == "on_request" || policy == "untrusted") && !cli.yes {
                     if name == "devit.tool_call" {
                         // Hierarchical approvals: inner (devit.tool_call:X) then outer (devit.tool_call)
-                        let requested_tool = args_json
-                            .get("tool")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                        let requested_tool =
+                            args_json.get("tool").and_then(|v| v.as_str()).unwrap_or("");
                         let inner_key_name = format!("devit.tool_call:{}", requested_tool);
                         let inner_key = ApprovalKey::new(&inner_key_name, None);
                         let outer_key = ApprovalKey::new("devit.tool_call", None);
-                        let (hit, which) = state.approvals.allow_hierarchical(&inner_key, &outer_key);
+                        let (hit, which) =
+                            state.approvals.allow_hierarchical(&inner_key, &outer_key);
                         match hit {
                             ApprovalHit::Denied => {
                                 audit_pre(&audit, name, "pre-deny");
@@ -1048,10 +1047,8 @@ fn real_main() -> Result<()> {
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        let forwarded_args = args_json
-                            .get("args")
-                            .cloned()
-                            .unwrap_or_else(|| json!({}));
+                        let forwarded_args =
+                            args_json.get("args").cloned().unwrap_or_else(|| json!({}));
                         let mut forwarded = json!({
                             "name": requested_tool,
                             "args": forwarded_args,
@@ -1524,7 +1521,7 @@ fn audit_server_approve_consume_detail(
     tool: &str,
     plugin_id: Option<&str>,
     approval_key_label: &str, // "inner" | "outer"
-    name: &str,               // matched key name (e.g., "devit.tool_call" or "devit.tool_call:<subtool>")
+    name: &str, // matched key name (e.g., "devit.tool_call" or "devit.tool_call:<subtool>")
 ) {
     if !opts.audit_enabled {
         return;

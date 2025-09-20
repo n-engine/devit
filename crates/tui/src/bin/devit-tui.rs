@@ -482,17 +482,16 @@ struct RecipeState {
     mode: RecipeMode,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 enum RecipeMode {
+    #[default]
     Idle,
-    DryRunReady { id: String },
-    Applying { id: String },
-}
-
-impl Default for RecipeMode {
-    fn default() -> Self {
-        RecipeMode::Idle
-    }
+    DryRunReady {
+        id: String,
+    },
+    Applying {
+        id: String,
+    },
 }
 
 impl RecipeState {
@@ -574,10 +573,8 @@ fn resolve_devit_bin() -> PathBuf {
     }));
 
     for candidate in &candidates {
-        if candidate.is_absolute() || candidate.components().count() > 1 {
-            if candidate.exists() {
-                return candidate.clone();
-            }
+        if (candidate.is_absolute() || candidate.components().count() > 1) && candidate.exists() {
+            return candidate.clone();
         }
     }
 
@@ -909,10 +906,16 @@ fn run(args: Args) -> Result<()> {
         // Simulate the list toggle view state
         tui_app.recipes.visible = true;
         // Ensure entries include the target so status line can show meaningful info
-        tui_app.recipes.entries = vec![RecipeEntry { id: id.to_string(), name: id.to_string(), description: None }];
+        tui_app.recipes.entries = vec![RecipeEntry {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: None,
+        }];
         tui_app.recipes.selected = 0;
         let mut cmd = vec!["recipe", "run", id];
-        if args.dry_run { cmd.push("--dry-run"); }
+        if args.dry_run {
+            cmd.push("--dry-run");
+        }
         match run_devit_command(cmd) {
             Ok(output) => {
                 tui_app.recipes.output = collect_output_lines(&output);
@@ -926,7 +929,8 @@ fn run(args: Args) -> Result<()> {
                                 tui_app.base_status = tui_app.status.clone();
                                 tui_app.diff = Some(diff_state);
                                 tui_app.recipes.visible = false;
-                                tui_app.recipes.info = Some(format!("Diff opened for recipe {}", id));
+                                tui_app.recipes.info =
+                                    Some(format!("Diff opened for recipe {}", id));
                             }
                             Err(err) => {
                                 let msg = match err {
@@ -938,7 +942,8 @@ fn run(args: Args) -> Result<()> {
                             }
                         }
                     } else if args.dry_run {
-                        tui_app.recipes.info = Some("Dry-run succeeded (no patch to preview)".to_string());
+                        tui_app.recipes.info =
+                            Some("Dry-run succeeded (no patch to preview)".to_string());
                     }
                 } else if let Some(_info) = detect_approval_required(&output) {
                     tui_app.recipes.mode = RecipeMode::DryRunReady { id: id.to_string() };
@@ -1653,10 +1658,11 @@ fn parse_unified_diff(content: &str) -> Result<Vec<DiffFile>, String> {
 
     impl PartialFile {
         fn with_diff_header(line: &str) -> Self {
-            let mut pf = PartialFile::default();
-            pf.diff_header = Some(line.to_string());
-            pf.header.push(line.to_string());
-            pf
+            PartialFile {
+                diff_header: Some(line.to_string()),
+                header: vec![line.to_string()],
+                ..Default::default()
+            }
         }
 
         fn finalize(self) -> DiffFile {
@@ -1747,7 +1753,7 @@ fn parse_unified_diff(content: &str) -> Result<Vec<DiffFile>, String> {
 }
 
 fn extract_path_after_prefix(line: &str) -> Option<String> {
-    line.split_whitespace().nth(1).map(|p| clean_diff_path(p))
+    line.split_whitespace().nth(1).map(clean_diff_path)
 }
 
 fn clean_diff_path(raw: &str) -> String {
