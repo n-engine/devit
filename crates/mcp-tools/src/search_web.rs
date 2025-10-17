@@ -14,6 +14,7 @@ use tracing::info;
 use url::Url;
 use uuid::Uuid;
 use devit_common::cache::cache_key;
+use crate::journal_best_effort as jbe;
 
 /// MCP tool: devit_search_web — DDG-backed SERP (HTML) with minimal parsing
 pub struct SearchWebTool {
@@ -188,6 +189,9 @@ impl McpTool for SearchWebTool {
             let mut pairs = url.query_pairs_mut();
             pairs.append_pair("q", query);
         }
+        // Precompute cache key for logging/metadata
+        let accept = "text/html";
+        let cache_key_val = cache_key(query, accept, &user_agent, safe_mode, include_content);
 
         let resp = client.get(url.clone()).send().await;
         let (results_json, partial, elapsed_ms) = match resp {
@@ -195,7 +199,7 @@ impl McpTool for SearchWebTool {
                 let status = r.status();
                 let body = r.text().await.unwrap_or_default();
                 if !status.is_success() {
-                    info!(target: "mcp.search", %trace_id, op="search", engine=%self.engine, code=%status.as_u16(), elapsed_ms=%start.elapsed().as_millis() as u64, effective_limits=?effective_limits, limit_sources=?limit_sources, delegation_context=?None::<()> , "search http error");
+                    info!(target: "mcp.search", %trace_id, op="search", engine=%self.engine, code=%status.as_u16(), elapsed_ms=%start.elapsed().as_millis() as u64, effective_limits=?effective_limits, limit_sources=?limit_sources, delegation_context=?None::<()> , cache_key=%cache_key_val, "search http error");
                     (
                         Vec::new(),
                         true,
@@ -228,14 +232,31 @@ impl McpTool for SearchWebTool {
                 }
             }
             Err(e) => {
-                info!(target: "mcp.search", %trace_id, op="search", engine=%self.engine, err=%e.to_string(), elapsed_ms=%start.elapsed().as_millis() as u64, effective_limits=?effective_limits, limit_sources=?limit_sources, delegation_context=?None::<()> , "search request failed");
+                info!(target: "mcp.search", %trace_id, op="search", engine=%self.engine, err=%e.to_string(), elapsed_ms=%start.elapsed().as_millis() as u64, effective_limits=?effective_limits, limit_sources=?limit_sources, delegation_context=?None::<()> , cache_key=%cache_key_val, "search request failed");
                 (Vec::new(), true, start.elapsed().as_millis() as u64)
             }
         };
 
         let retrieved_at = Utc::now().to_rfc3339();
-        let accept = "text/html";
-        let cache_key_val = cache_key(query, accept, &user_agent, safe_mode, include_content);
+        let meta = json!({
+            "engine": self.engine,
+            "trace_id": trace_id,
+            "partial": partial,
+            "cache": "miss",
+            "elapsed_ms": elapsed_ms,
+            "effective_limits": effective_limits,
+            "limit_sources": limit_sources,
+            "delegation_context": serde_json::Value::Null,
+            "cache_key": cache_key_val
+        });
+        // Journal best-effort
+        jbe::append("search", &json!({
+            "query": query,
+            "retrieved_at": retrieved_at,
+            "results_count": results_json.len(),
+            "meta": meta
+        }));
+
         let out = json!({
             "content": [
                 {
@@ -247,17 +268,7 @@ impl McpTool for SearchWebTool {
                 "query": query,
                 "retrieved_at": retrieved_at,
                 "results": results_json,
-                "meta": {
-                    "engine": self.engine,
-                    "trace_id": trace_id,
-                    "partial": partial,
-                    "cache": "miss",
-                    "elapsed_ms": elapsed_ms,
-                    "effective_limits": effective_limits,
-                    "limit_sources": limit_sources,
-                    "delegation_context": serde_json::Value::Null,
-                    "cache_key": cache_key_val
-                }
+                "meta": meta
             }
         });
 

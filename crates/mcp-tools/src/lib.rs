@@ -29,6 +29,7 @@ mod patch_apply;
 mod ps;
 mod pwd;
 mod net_utils;
+mod journal_best_effort;
 mod search_web;
 mod fetch_url;
 mod screenshot;
