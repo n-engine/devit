@@ -182,6 +182,16 @@ Configuration files:
 - `devit.toml` for CLI defaults (approvals, sandbox, git policies).
 - `devitd.core.toml` or `win_devit.core.toml` for daemon worker definitions.
 
+Network (Search/Fetch) ENV
+- `DEVIT_ENGINE`: search engine (`ddg`).
+- `DEVIT_DDG_BASE`: DDG HTML base (default `https://duckduckgo.com/html`).
+- `DEVIT_SEARCH_TIMEOUT_MS`: global search timeout (100..10000 ms, default 8000).
+- `DEVIT_FETCH_TIMEOUT_MS`: global fetch timeout (100..10000 ms, default 8000).
+- `DEVIT_HTTP_USER_AGENT`: HTTP User-Agent (default `DevItBot/1.0`).
+- `DEVIT_RESPECT_ROBOTS`: `1/0` respect robots.txt (default 1).
+- `DEVIT_FOLLOW_REDIRECTS`: `1/0` follow up to 2 redirects (default 1).
+- `DEVIT_BLOCK_PRIVATE_CIDRS`: `1/0` block private/local hosts (default 1).
+
 ---
 
 ## 🛠️ Development & tests
