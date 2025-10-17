@@ -3,10 +3,15 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::journal_best_effort as jbe;
+use crate::net_utils::{
+    detect_injection_text, detect_paywall_hint, robots_policy_for, sanitize_html_to_text,
+    RobotsPolicy,
+};
 use async_trait::async_trait;
 use chrono::Utc;
-use devit_common::limits::{resolve_fetch_limits, EffectiveLimits, LimitSources};
 use devit_common::cache::cache_key;
+use devit_common::limits::{resolve_fetch_limits, EffectiveLimits, LimitSources};
 use mcp_core::{McpError, McpResult, McpTool};
 use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, CACHE_CONTROL, PRAGMA, USER_AGENT};
 use reqwest::redirect::Policy as RedirectPolicy;
@@ -15,11 +20,6 @@ use serde_json::{json, Value};
 use tracing::info;
 use url::Url;
 use uuid::Uuid;
-use crate::net_utils::{
-    detect_injection_text, detect_paywall_hint, robots_policy_for, sanitize_html_to_text,
-    RobotsPolicy,
-};
-use crate::journal_best_effort as jbe;
 
 /// MCP tool: devit_fetch_url — safe HTML/text fetch with robots + sanitizer
 pub struct FetchUrlTool;
@@ -95,7 +95,6 @@ impl FetchUrlTool {
             _ => None,
         }
     }
-
 }
 
 #[async_trait]
@@ -117,11 +116,12 @@ impl McpTool for FetchUrlTool {
         let url = Self::validate_url(url_raw)?;
 
         // Resolve normalized limits from params/env/defaults
-        let (effective_limits, limit_sources): (EffectiveLimits, LimitSources) = resolve_fetch_limits(
-            params.get("timeout_ms").and_then(Value::as_u64),
-            params.get("max_bytes").and_then(Value::as_u64),
-            params.get("follow_redirects").and_then(Value::as_bool),
-        );
+        let (effective_limits, limit_sources): (EffectiveLimits, LimitSources) =
+            resolve_fetch_limits(
+                params.get("timeout_ms").and_then(Value::as_u64),
+                params.get("max_bytes").and_then(Value::as_u64),
+                params.get("follow_redirects").and_then(Value::as_bool),
+            );
         let timeout_ms = effective_limits.timeout_ms;
         let max_bytes = effective_limits.max_bytes.unwrap_or(500_000);
         let follow_redirects = effective_limits.follow_redirects;
@@ -176,7 +176,8 @@ impl McpTool for FetchUrlTool {
                     if let RobotsPolicy::Disallow = policy {
                         let trace_id = Uuid::new_v4().to_string();
                         let accept_hdr = "text/html, text/plain;q=0.9, */*;q=0.1";
-                        let cache_key_val = cache_key(url.as_str(), accept_hdr, &agent, _safe_mode, true);
+                        let cache_key_val =
+                            cache_key(url.as_str(), accept_hdr, &agent, _safe_mode, true);
                         info!(target: "mcp.fetch", %trace_id, op="fetch", host=%host, policy=%robots_policy_str, cache_key=%cache_key_val, "blocked by robots");
                         let meta = json!({
                             "trace_id": trace_id,
@@ -189,12 +190,15 @@ impl McpTool for FetchUrlTool {
                             "delegation_context": serde_json::Value::Null,
                             "cache_key": cache_key_val
                         });
-                        jbe::append("fetch", &json!({
-                            "url": url.as_str(),
-                            "final_url": url.as_str(),
-                            "status": 0,
-                            "meta": meta
-                        }));
+                        jbe::append(
+                            "fetch",
+                            &json!({
+                                "url": url.as_str(),
+                                "final_url": url.as_str(),
+                                "status": 0,
+                                "meta": meta
+                            }),
+                        );
                         return Ok(json!({
                             "content": [
                                 {"type": "text", "text": format!("Robots policy disallows fetching: {}", url)}
@@ -246,7 +250,9 @@ impl McpTool for FetchUrlTool {
                     .to_lowercase();
 
                 // MIME whitelist
-                let allowed = content_type.starts_with("text/html") || content_type.starts_with("text/plain") || content_type.starts_with("application/xhtml+xml");
+                let allowed = content_type.starts_with("text/html")
+                    || content_type.starts_with("text/plain")
+                    || content_type.starts_with("application/xhtml+xml");
                 if !allowed {
                     info!(target: "mcp.fetch", %trace_id, op="fetch", url=%final_url, status=%status, ct=%content_type, cache_key=%cache_key_val, "unsupported mime");
                     let meta = json!({
@@ -260,12 +266,15 @@ impl McpTool for FetchUrlTool {
                         "delegation_context": serde_json::Value::Null,
                         "cache_key": cache_key_val
                     });
-                    jbe::append("fetch", &json!({
-                        "url": url.as_str(),
-                        "final_url": final_url,
-                        "status": status,
-                        "meta": meta
-                    }));
+                    jbe::append(
+                        "fetch",
+                        &json!({
+                            "url": url.as_str(),
+                            "final_url": final_url,
+                            "status": status,
+                            "meta": meta
+                        }),
+                    );
                     return Ok(json!({
                         "content": [
                             {"type": "text", "text": format!("Unsupported MIME type: {}", content_type)}
@@ -302,12 +311,15 @@ impl McpTool for FetchUrlTool {
                             "delegation_context": serde_json::Value::Null,
                             "cache_key": cache_key_val
                         });
-                        jbe::append("fetch", &json!({
-                            "url": url.as_str(),
-                            "final_url": final_url,
-                            "status": status,
-                            "meta": meta
-                        }));
+                        jbe::append(
+                            "fetch",
+                            &json!({
+                                "url": url.as_str(),
+                                "final_url": final_url,
+                                "status": status,
+                                "meta": meta
+                            }),
+                        );
                         return Ok(json!({
                             "content": [
                                 {"type": "text", "text": format!("Response too large ({} bytes > limit {})", len, max_bytes)}
@@ -347,12 +359,15 @@ impl McpTool for FetchUrlTool {
                             "delegation_context": serde_json::Value::Null,
                             "cache_key": cache_key_val
                         });
-                        jbe::append("fetch", &json!({
-                            "url": url.as_str(),
-                            "final_url": final_url,
-                            "status": status,
-                            "meta": meta
-                        }));
+                        jbe::append(
+                            "fetch",
+                            &json!({
+                                "url": url.as_str(),
+                                "final_url": final_url,
+                                "status": status,
+                                "meta": meta
+                            }),
+                        );
                         return Ok(json!({
                             "content": [
                                 {"type": "text", "text": format!("Response exceeded max_bytes limit ({} bytes)", bytes.len())}
@@ -379,7 +394,9 @@ impl McpTool for FetchUrlTool {
                 let mut errors: Vec<Value> = Vec::new();
                 let body_str = String::from_utf8_lossy(&bytes).to_string();
                 let paywall_detected = detect_paywall_hint(&body_str);
-                let text = if content_type.starts_with("text/html") || content_type.starts_with("application/xhtml+xml") {
+                let text = if content_type.starts_with("text/html")
+                    || content_type.starts_with("application/xhtml+xml")
+                {
                     sanitize_html_to_text(&body_str)
                 } else {
                     // Plain text
@@ -388,7 +405,10 @@ impl McpTool for FetchUrlTool {
                 if detect_injection_text(&text) {
                     errors.push(json!({"code": "SANITIZER_BLOCKED", "message": "Content flagged as potentially prompt-injection"}));
                 } else {
-                    let wrapped = format!("[UNTRUSTED_CONTENT_START]\n{}\n[UNTRUSTED_CONTENT_END]", text);
+                    let wrapped = format!(
+                        "[UNTRUSTED_CONTENT_START]\n{}\n[UNTRUSTED_CONTENT_END]",
+                        text
+                    );
                     content_text = Some(wrapped);
                 }
 
@@ -405,12 +425,15 @@ impl McpTool for FetchUrlTool {
                     "delegation_context": serde_json::Value::Null,
                     "cache_key": cache_key_val
                 });
-                jbe::append("fetch", &json!({
-                    "url": url.as_str(),
-                    "final_url": final_url,
-                    "status": status,
-                    "meta": meta
-                }));
+                jbe::append(
+                    "fetch",
+                    &json!({
+                        "url": url.as_str(),
+                        "final_url": final_url,
+                        "status": status,
+                        "meta": meta
+                    }),
+                );
                 Ok(json!({
                     "content": [
                         {
@@ -445,12 +468,15 @@ impl McpTool for FetchUrlTool {
                     "delegation_context": serde_json::Value::Null,
                     "cache_key": cache_key_val
                 });
-                jbe::append("fetch", &json!({
-                    "url": url.as_str(),
-                    "final_url": url.as_str(),
-                    "status": 0,
-                    "meta": meta
-                }));
+                jbe::append(
+                    "fetch",
+                    &json!({
+                        "url": url.as_str(),
+                        "final_url": url.as_str(),
+                        "status": 0,
+                        "meta": meta
+                    }),
+                );
                 Ok(json!({
                     "content": [
                         {"type": "text", "text": format!("Fetch failed: {}", e)}

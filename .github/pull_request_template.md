@@ -1,26 +1,16 @@
-## Type / Scope
-- Type (Conventional): feat | fix | chore | docs | test | refactor
-- Scope (optionnel): ex. `cli`, `sandbox`, `tools`
+### Summary
+Concise description of the change.
 
-## Description courte
-Brève synthèse: quoi et pourquoi en 2–3 lignes.
+### What’s included
+- Centralized limits + structured logs/metadata (effective_limits, limit_sources, delegation_context, cache_key)
+- Cache key includes safe_mode
+- Journal best-effort append (non-blocking)
 
-## Impact CLI / Sandbox / Approvals / Timeouts
-- CLI (flags/commandes ajoutées/modifiées):
-- Sandbox (comportement, safe‑list, net):
-- Approvals (règles, prompts):
-- Timeouts (valeur, où l’appliquer):
+### Acceptance checks
+- [ ] Linux CI green (<15 min); Windows build-only
+- [ ] Robots disallow blocked before fetch
+- [ ] eTLD+1 domain diversity (strict=2, moderate=3, off=∞)
+- [ ] Shape-only tests (feature `test-utils`) passing
 
-## Risques & Plan de rollback
-- Risques identifiés:
-- Plan de rollback (commande ou revert simples):
-
-## Étapes de test (commandes exactes)
-1. …
-2. …
-3. …
-
-## Checklist
-- [ ] cargo fmt --all -- --check
-- [ ] cargo clippy --workspace --all-targets -- -D warnings
-- [ ] cargo test --workspace --all-targets --no-fail-fast
+### Compliance
+- [ ] This PR follows the repository Language policy (English-only for repo artifacts).

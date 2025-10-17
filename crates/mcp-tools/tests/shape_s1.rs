@@ -5,8 +5,14 @@ use mcp_tools::test_helpers::*;
 #[test]
 fn robots_policy_allow_and_disallow() {
     let robots = "User-agent: *\nDisallow: /private\nAllow: /private/docs";
-    assert_eq!(robots_policy_for("/private", robots), RobotsPolicy::Disallow);
-    assert_eq!(robots_policy_for("/private/docs/intro", robots), RobotsPolicy::Allow);
+    assert_eq!(
+        robots_policy_for("/private", robots),
+        RobotsPolicy::Disallow
+    );
+    assert_eq!(
+        robots_policy_for("/private/docs/intro", robots),
+        RobotsPolicy::Allow
+    );
     assert_eq!(robots_policy_for("/public", robots), RobotsPolicy::Allow);
 }
 

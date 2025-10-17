@@ -30,4 +30,3 @@ mod meta_shape {
         assert!(m["delegation_context"].is_null());
     }
 }
-

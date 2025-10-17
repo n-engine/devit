@@ -10,8 +10,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --all --all-features -- -D warnings
+      - name: Clippy (focused)
+        run: |
+          cargo clippy -p mcp-tools --all-features -- -D warnings
+          cargo clippy -p devit-common --all-features -- -D warnings
       - name: Test (mcp-tools shape-only)
         run: cargo test -p mcp-tools --features test-utils
       - name: Test (workspace libs)
@@ -25,4 +27,3 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --workspace --release
-

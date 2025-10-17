@@ -37,10 +37,7 @@ fn main() -> Result<()> {
     )?;
     let wip_docs = collect_documents(
         repo_root.join("PROJECT_TRACKING/WORK_IN_PROGRESS"),
-        CollectOptions {
-            skip_readme: true,
-            ..CollectOptions::default()
-        },
+        CollectOptions { skip_readme: true },
     )?;
 
     let completed_features: Vec<_> = feature_docs
@@ -147,7 +144,7 @@ impl DocumentStatus {
     fn is_completed(&self) -> bool {
         self.status
             .as_deref()
-            .map(|value| is_completed_status(value))
+            .map(is_completed_status)
             .unwrap_or(false)
     }
 }
@@ -264,11 +261,7 @@ fn collect_documents(dir: PathBuf, options: CollectOptions) -> Result<Vec<Docume
         if !path.is_file() {
             continue;
         }
-        if path
-            .extension()
-            .and_then(OsStr::to_str)
-            .map_or(true, |ext| ext != "md")
-        {
+        if path.extension().and_then(OsStr::to_str) != Some("md") {
             continue;
         }
         if options.skip_readme

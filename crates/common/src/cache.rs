@@ -26,21 +26,8 @@ mod tests {
 
     #[test]
     fn cache_key_differs_by_safe_mode() {
-        let k1 = cache_key(
-            "https://ex",
-            "text/html",
-            "DevItBot/1.0",
-            "strict",
-            true,
-        );
-        let k2 = cache_key(
-            "https://ex",
-            "text/html",
-            "DevItBot/1.0",
-            "off",
-            true,
-        );
+        let k1 = cache_key("https://ex", "text/html", "DevItBot/1.0", "strict", true);
+        let k2 = cache_key("https://ex", "text/html", "DevItBot/1.0", "off", true);
         assert_ne!(k1, k2);
     }
 }
-

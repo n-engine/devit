@@ -20,8 +20,11 @@ pub fn append(op: &str, meta: &Value) {
         "op": op,
         "meta": meta,
     });
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(journal_path()) {
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(journal_path())
+    {
         let _ = writeln!(file, "{}", line.to_string());
     }
 }
-

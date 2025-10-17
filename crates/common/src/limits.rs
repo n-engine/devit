@@ -11,11 +11,11 @@ pub struct EffectiveLimits {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LimitSources {
-    pub timeout_ms: &'static str,          // "param" | "env" | "default"
+    pub timeout_ms: &'static str, // "param" | "env" | "default"
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_bytes: Option<&'static str>,   // "param" | "env" | "default"
-    pub max_redirects: &'static str,       // always "default" for S1
-    pub follow_redirects: &'static str,    // "param" | "env" | "default"
+    pub max_bytes: Option<&'static str>, // "param" | "env" | "default"
+    pub max_redirects: &'static str, // always "default" for S1
+    pub follow_redirects: &'static str, // "param" | "env" | "default"
 }
 
 fn parse_env_u64(name: &str) -> Option<u64> {
@@ -32,8 +32,12 @@ fn parse_env_bool(name: &str) -> Option<bool> {
 }
 
 fn clamp(v: u64, min: u64, max: u64) -> u64 {
-    if v < min { return min; }
-    if v > max { return max; }
+    if v < min {
+        return min;
+    }
+    if v > max {
+        return max;
+    }
     v
 }
 
@@ -118,4 +122,3 @@ pub fn resolve_fetch_limits(
     };
     (effective, sources)
 }
-

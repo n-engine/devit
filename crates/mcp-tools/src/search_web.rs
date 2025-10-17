@@ -2,8 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::journal_best_effort as jbe;
 use async_trait::async_trait;
 use chrono::Utc;
+use devit_common::cache::cache_key;
 use devit_common::limits::{resolve_search_limits, EffectiveLimits, LimitSources};
 use mcp_core::{McpError, McpResult, McpTool};
 use regex::Regex;
@@ -13,8 +15,6 @@ use serde_json::{json, Value};
 use tracing::info;
 use url::Url;
 use uuid::Uuid;
-use devit_common::cache::cache_key;
-use crate::journal_best_effort as jbe;
 
 /// MCP tool: devit_search_web — DDG-backed SERP (HTML) with minimal parsing
 pub struct SearchWebTool {
@@ -89,16 +89,16 @@ impl SearchWebTool {
         let mut per_domain: HashMap<String, usize> = HashMap::new();
 
         // Capture the DDG redirect link and title
-        let re = Regex::new(
-            r#"<a[^>]+href=\"(https://duckduckgo\.com/l/[^\"]+)\"[^>]*>(.*?)</a>"#,
-        )
-        .ok();
+        let re =
+            Regex::new(r#"<a[^>]+href=\"(https://duckduckgo\.com/l/[^\"]+)\"[^>]*>(.*?)</a>"#).ok();
 
         if let Some(re) = re {
             for caps in re.captures_iter(html) {
                 let href = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                 let title_raw = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-                let Ok(ddg_url) = Url::parse(href) else { continue };
+                let Ok(ddg_url) = Url::parse(href) else {
+                    continue;
+                };
                 let mut target: Option<String> = None;
                 for (k, v) in ddg_url.query_pairs() {
                     if k == "uddg" {
@@ -180,7 +180,11 @@ impl McpTool for SearchWebTool {
         let start = Instant::now();
         let ddg_endpoint = Self::ddg_base();
         let user_agent = Self::user_agent();
-        let client = Self::build_client(timeout_ms, effective_limits.max_redirects as usize, &user_agent)?;
+        let client = Self::build_client(
+            timeout_ms,
+            effective_limits.max_redirects as usize,
+            &user_agent,
+        )?;
 
         // Build URL
         let mut url = Url::parse(&ddg_endpoint)
@@ -200,11 +204,7 @@ impl McpTool for SearchWebTool {
                 let body = r.text().await.unwrap_or_default();
                 if !status.is_success() {
                     info!(target: "mcp.search", %trace_id, op="search", engine=%self.engine, code=%status.as_u16(), elapsed_ms=%start.elapsed().as_millis() as u64, effective_limits=?effective_limits, limit_sources=?limit_sources, delegation_context=?None::<()> , cache_key=%cache_key_val, "search http error");
-                    (
-                        Vec::new(),
-                        true,
-                        start.elapsed().as_millis() as u64,
-                    )
+                    (Vec::new(), true, start.elapsed().as_millis() as u64)
                 } else {
                     let pairs = Self::parse_ddg_results(
                         &body,
@@ -224,11 +224,7 @@ impl McpTool for SearchWebTool {
                         })
                         .collect();
 
-                    (
-                        results_json,
-                        false,
-                        start.elapsed().as_millis() as u64,
-                    )
+                    (results_json, false, start.elapsed().as_millis() as u64)
                 }
             }
             Err(e) => {
@@ -250,12 +246,15 @@ impl McpTool for SearchWebTool {
             "cache_key": cache_key_val
         });
         // Journal best-effort
-        jbe::append("search", &json!({
-            "query": query,
-            "retrieved_at": retrieved_at,
-            "results_count": results_json.len(),
-            "meta": meta
-        }));
+        jbe::append(
+            "search",
+            &json!({
+                "query": query,
+                "retrieved_at": retrieved_at,
+                "results_count": results_json.len(),
+                "meta": meta
+            }),
+        );
 
         let out = json!({
             "content": [
@@ -293,7 +292,10 @@ impl McpTool for SearchWebTool {
 // --- helpers ---
 
 fn html_unescape(s: &str) -> String {
-    let mut out = s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">");
+    let mut out = s
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">");
     out = out.replace("&quot;", "\"").replace("&#39;", "'");
     if let Ok(re) = Regex::new(r"<[^>]+>") {
         out = re.replace_all(&out, "").to_string();
@@ -302,5 +304,7 @@ fn html_unescape(s: &str) -> String {
 }
 
 fn domain_of(u: &str) -> Option<String> {
-    Url::parse(u).ok().and_then(|p| p.domain().map(|d| d.to_string()))
+    Url::parse(u)
+        .ok()
+        .and_then(|p| p.domain().map(|d| d.to_string()))
 }

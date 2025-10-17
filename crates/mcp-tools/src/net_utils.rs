@@ -18,7 +18,12 @@ pub fn robots_policy_for(path: &str, robots: &str) -> RobotsPolicy {
             continue;
         }
         if line.to_ascii_lowercase().starts_with("user-agent:") {
-            let agent = line.splitn(2, ':').nth(1).unwrap_or("").trim().to_ascii_lowercase();
+            let agent = line
+                .splitn(2, ':')
+                .nth(1)
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
             in_star = agent == "*";
             continue;
         }
@@ -36,7 +41,9 @@ pub fn robots_policy_for(path: &str, robots: &str) -> RobotsPolicy {
 
     let mut best_dis: Option<&str> = None;
     for d in &disallows {
-        if d.is_empty() { continue; }
+        if d.is_empty() {
+            continue;
+        }
         if path.starts_with(d) {
             if best_dis.map(|b| d.len() > b.len()).unwrap_or(true) {
                 best_dis = Some(d);
@@ -120,4 +127,3 @@ pub fn detect_injection_text(text: &str) -> bool {
     }
     hits >= 2
 }
-
