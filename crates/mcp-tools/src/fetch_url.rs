@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use chrono::Utc;
 use devit_common::limits::{resolve_fetch_limits, EffectiveLimits, LimitSources};
+use devit_common::cache::cache_key;
 use mcp_core::{McpError, McpResult, McpTool};
 use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, CACHE_CONTROL, PRAGMA, USER_AGENT};
 use reqwest::redirect::Policy as RedirectPolicy;
@@ -211,11 +212,14 @@ impl McpTool for FetchUrlTool {
         let start = Instant::now();
         let mut req = client.get(url.clone());
         req = req
-            .header(USER_AGENT, agent)
+            .header(USER_AGENT, agent.as_str())
             .header(ACCEPT, "text/html, text/plain;q=0.9, */*;q=0.1")
             .header(ACCEPT_LANGUAGE, "en-US,en;q=0.9,fr;q=0.8")
             .header(CACHE_CONTROL, "no-cache")
             .header(PRAGMA, "no-cache");
+        // Cache key (shape): include safe_mode (not exposed), include_content (assumed true for fetch), UA, accept
+        let accept_hdr = "text/html, text/plain;q=0.9, */*;q=0.1";
+        let cache_key_val = cache_key(url.as_str(), accept_hdr, &agent, _safe_mode, true);
 
         let resp = req.send().await;
         let trace_id = Uuid::new_v4().to_string();
@@ -255,7 +259,8 @@ impl McpTool for FetchUrlTool {
                                 "elapsed_ms": start.elapsed().as_millis() as u64,
                                 "effective_limits": effective_limits,
                                 "limit_sources": limit_sources,
-                                "delegation_context": serde_json::Value::Null
+                                "delegation_context": serde_json::Value::Null,
+                                "cache_key": cache_key_val
                             },
                             "errors": [
                                 {"code": "UNSUPPORTED_MIME", "message": "Only text/html, text/plain, application/xhtml+xml are allowed"}
@@ -289,7 +294,8 @@ impl McpTool for FetchUrlTool {
                                     "elapsed_ms": start.elapsed().as_millis() as u64,
                                     "effective_limits": effective_limits,
                                     "limit_sources": limit_sources,
-                                    "delegation_context": serde_json::Value::Null
+                                    "delegation_context": serde_json::Value::Null,
+                                    "cache_key": cache_key_val
                                 },
                                 "errors": [
                                     {"code": "TOO_LARGE", "message": "Content-Length exceeds limit"}
@@ -326,7 +332,8 @@ impl McpTool for FetchUrlTool {
                                     "elapsed_ms": start.elapsed().as_millis() as u64,
                                     "effective_limits": effective_limits,
                                     "limit_sources": limit_sources,
-                                    "delegation_context": serde_json::Value::Null
+                                    "delegation_context": serde_json::Value::Null,
+                                    "cache_key": cache_key_val
                                 },
                                 "errors": [
                                     {"code": "TOO_LARGE", "message": "Streamed body exceeded limit"}
@@ -379,7 +386,8 @@ impl McpTool for FetchUrlTool {
                             "elapsed_ms": elapsed_ms,
                             "effective_limits": effective_limits,
                             "limit_sources": limit_sources,
-                            "delegation_context": serde_json::Value::Null
+                            "delegation_context": serde_json::Value::Null,
+                            "cache_key": cache_key_val
                         },
                         "errors": errors
                     }
@@ -408,7 +416,8 @@ impl McpTool for FetchUrlTool {
                             "elapsed_ms": 0,
                             "effective_limits": effective_limits,
                             "limit_sources": limit_sources,
-                            "delegation_context": serde_json::Value::Null
+                            "delegation_context": serde_json::Value::Null,
+                            "cache_key": cache_key_val
                         },
                         "errors": [
                             {"code": "NETWORK_ERROR", "message": e.to_string()}

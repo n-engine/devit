@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use tracing::info;
 use url::Url;
 use uuid::Uuid;
+use devit_common::cache::cache_key;
 
 /// MCP tool: devit_search_web — DDG-backed SERP (HTML) with minimal parsing
 pub struct SearchWebTool {
@@ -233,6 +234,8 @@ impl McpTool for SearchWebTool {
         };
 
         let retrieved_at = Utc::now().to_rfc3339();
+        let accept = "text/html";
+        let cache_key_val = cache_key(query, accept, &user_agent, safe_mode, include_content);
         let out = json!({
             "content": [
                 {
@@ -252,7 +255,8 @@ impl McpTool for SearchWebTool {
                     "elapsed_ms": elapsed_ms,
                     "effective_limits": effective_limits,
                     "limit_sources": limit_sources,
-                    "delegation_context": serde_json::Value::Null
+                    "delegation_context": serde_json::Value::Null,
+                    "cache_key": cache_key_val
                 }
             }
         });
