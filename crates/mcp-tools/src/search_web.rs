@@ -317,7 +317,12 @@ fn html_unescape(s: &str) -> String {
 }
 
 fn domain_of(u: &str) -> Option<String> {
-    let host = Url::parse(u).ok()?.host_str()?.to_lowercase();
+    // Accept either a full URL or a bare host.
+    let host = if let Ok(p) = Url::parse(u) {
+        p.host_str().map(|s| s.to_lowercase())?
+    } else {
+        u.to_lowercase()
+    };
     // Basic eTLD+1 heuristic with a small set of common multi-label public suffixes.
     // If you enable a future `etld1` feature, this can be replaced with `publicsuffix`.
     const MULTI_SUFFIXES: &[&str] = &[
@@ -341,3 +346,7 @@ fn domain_of(u: &str) -> Option<String> {
     }
     Some(pair)
 }
+
+// Test-only helper for shape tests
+#[cfg(any(test, feature = "test-utils"))]
+pub fn __test_domain_of(input: &str) -> Option<String> { domain_of(input) }

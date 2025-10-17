@@ -33,6 +33,8 @@ mod ps;
 mod pwd;
 mod screenshot;
 mod search_web;
+#[cfg(any(test, feature = "test-utils"))]
+pub use search_web::__test_domain_of;
 mod snapshot;
 mod test_run;
 mod worker;
