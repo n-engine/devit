@@ -223,8 +223,21 @@ impl McpTool for SearchWebTool {
                             })
                         })
                         .collect();
-
-                    (results_json, false, start.elapsed().as_millis() as u64)
+                    let elapsed_ms = start.elapsed().as_millis() as u64;
+                    info!(
+                        target: "mcp.search",
+                        %trace_id,
+                        op = "search",
+                        engine = %self.engine,
+                        results = results_json.len(),
+                        elapsed_ms = %elapsed_ms,
+                        effective_limits = ?effective_limits,
+                        limit_sources = ?limit_sources,
+                        delegation_context = ?None::<()> ,
+                        cache_key = %cache_key_val,
+                        "search done"
+                    );
+                    (results_json, false, elapsed_ms)
                 }
             }
             Err(e) => {

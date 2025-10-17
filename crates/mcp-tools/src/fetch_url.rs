@@ -456,7 +456,9 @@ impl McpTool for FetchUrlTool {
                 }))
             }
             Err(e) => {
-                info!(target: "mcp.fetch", op="fetch", err=%e.to_string(), cache_key=%cache_key_val, "fetch failed");
+                let is_redirect = e.is_redirect();
+                let code = if is_redirect { "REDIRECT_LOOP" } else { "NETWORK_ERROR" };
+                info!(target: "mcp.fetch", op="fetch", err=%e.to_string(), redirect=%is_redirect, cache_key=%cache_key_val, "fetch failed");
                 let meta = json!({
                     "trace_id": Uuid::new_v4().to_string(),
                     "robots_policy": robots_policy_str,
@@ -492,7 +494,7 @@ impl McpTool for FetchUrlTool {
                         "headers": {},
                         "meta": meta,
                         "errors": [
-                            {"code": "NETWORK_ERROR", "message": e.to_string()}
+                            {"code": code, "message": e.to_string()}
                         ]
                     }
                 }))
