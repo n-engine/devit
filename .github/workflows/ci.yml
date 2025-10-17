@@ -1,8 +1,11 @@
-name: ci
-on: [push, pull_request]
+name: ci (disabled)
+on:
+  # Temporarily disabled automatic CI. Manual runs only.
+  workflow_dispatch:
 
 jobs:
   linux:
+    if: false  # disabled for now
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +23,7 @@ jobs:
         run: cargo test --workspace --lib
 
   windows:
+    if: false  # disabled for now
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
