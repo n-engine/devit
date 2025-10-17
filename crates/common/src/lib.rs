@@ -1,7 +1,9 @@
 // # -----------------------------
 // # crates/common/src/lib.rs
 // # -----------------------------
+pub mod cache;
 pub mod fs;
+pub mod limits;
 pub mod orchestration;
 pub mod process_registry;
 pub mod process_utils;

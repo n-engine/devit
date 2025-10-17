@@ -11,17 +11,20 @@ mod atomic_patcher;
 mod directory_list;
 mod errors;
 mod exec;
+mod fetch_url;
 mod file_explore;
 mod file_read;
 mod file_write;
 mod git;
 mod help;
 mod journal;
+mod journal_best_effort;
 #[cfg(target_os = "linux")]
 mod keyboard;
 mod kill;
 #[cfg(target_os = "linux")]
 mod mouse;
+mod net_utils;
 mod ocr;
 mod ocr_alerts;
 mod orchestration;
@@ -29,6 +32,7 @@ mod patch_apply;
 mod ps;
 mod pwd;
 mod screenshot;
+mod search_web;
 mod snapshot;
 mod test_run;
 mod worker;
@@ -66,6 +70,15 @@ pub use screenshot::ScreenshotTool;
 pub use snapshot::{SnapshotContext, SnapshotTool};
 pub use test_run::{TestRunContext, TestRunTool};
 pub use worker::{PollTasksTool, ToolOptions, WorkerBridge, WorkerTask};
+
+// Test-only helpers re-export (S1 harness Option A)
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_helpers {
+    pub use crate::net_utils::{
+        detect_injection_text, detect_paywall_hint, robots_policy_for, sanitize_html_to_text,
+        RobotsPolicy,
+    };
+}
 
 /// Construit l'ensemble de tools MCP prêts à l'emploi pour un répertoire projet.
 pub async fn default_tools(root_path: PathBuf) -> McpResult<Vec<Arc<dyn McpTool>>> {
@@ -131,6 +144,8 @@ pub async fn default_tools_with_options(
         Arc::clone(&file_context),
         Arc::clone(&orchestration_context),
     );
+    let web_search_tool: Arc<dyn McpTool> = search_web::SearchWebTool::new_default();
+    let fetch_url_tool: Arc<dyn McpTool> = fetch_url::FetchUrlTool::new();
     let exec_config = provided_exec_config.unwrap_or_else(|| core_config.tools.exec.clone());
     let sandbox_root = provided_sandbox_root.unwrap_or_else(|| file_context.root().to_path_buf());
     let exec_tool: Arc<dyn McpTool> = Arc::new(DevitExec::with_config(exec_config, sandbox_root)?);
@@ -165,6 +180,8 @@ pub async fn default_tools_with_options(
         Arc::new(git_search),
         Arc::new(ocr_tool),
         Arc::new(ocr_alerts_tool),
+        web_search_tool,
+        fetch_url_tool,
         exec_tool,
         ps_tool,
         kill_tool,

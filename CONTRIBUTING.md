@@ -1,6 +1,12 @@
 # CONTRIBUTING.md
 Merci de contribuer à DevIt 💚
 
+## Language policy
+
+- English only for repository content: code, commit messages, PR titles/descriptions, docs, and code comments.
+- Discussions outside the repository may happen in other languages; no retroactive edits are required.
+- If a PR needs to include external English excerpts or logs, include a short English summary as context.
+
 ## Setup
 - Rust stable, `cargo build --workspace`.
 - Backend local (LM Studio / Ollama).

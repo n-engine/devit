@@ -111,7 +111,7 @@ devit.user.toml
 credentials.json
 secrets.toml
 # Security/changelog placeholders (local only)
-SECURITY.md
-CHANGELOG.md
+#SECURITY.md
+#CHANGELOG.md
 # Security contacts will be published when public disclosure process is defined.
 # Changelog is kept internal until first public release.
