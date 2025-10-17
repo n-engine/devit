@@ -1,0 +1,403 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devit.io/schemas/error.schema.json",
+  "title": "DevIt Standard Error",
+  "description": "Schema for DevIt standard error responses with comprehensive error code mapping",
+  "type": "object",
+  "required": ["code", "message"],
+  "properties": {
+    "code": {
+      "title": "Error Code",
+      "description": "Standardized error code for programmatic handling",
+      "type": "string",
+      "enum": [
+        "E_INVALID_DIFF",
+        "E_SNAPSHOT_REQUIRED",
+        "E_SNAPSHOT_STALE",
+        "E_POLICY_BLOCK",
+        "E_PROTECTED_PATH",
+        "E_PRIV_ESCALATION",
+        "E_GIT_DIRTY",
+        "E_VCS_CONFLICT",
+        "E_TEST_FAIL",
+        "E_TEST_TIMEOUT",
+        "E_SANDBOX_DENIED",
+        "E_RESOURCE_LIMIT",
+        "E_IO",
+        "E_INTERNAL",
+        "E_VALIDATION",
+        "E_MALFORMED_REQUEST"
+      ]
+    },
+    "message": {
+      "title": "Error Message",
+      "description": "Human-readable error message in French",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "hint": {
+      "title": "Resolution Hint",
+      "description": "Optional hint for resolving the error",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "actionable": {
+      "title": "User Actionable",
+      "description": "Indicates whether the user can take action to resolve this error",
+      "type": "boolean"
+    },
+    "details": {
+      "title": "Error Details",
+      "description": "Additional structured error information",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "InvalidDiffDetails": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Reason why the diff is invalid"
+        },
+        "line_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Line number where parsing failed"
+        }
+      },
+      "required": ["reason"],
+      "additionalProperties": false
+    },
+    "SnapshotRequiredDetails": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "description": "Operation that requires a snapshot"
+        },
+        "expected": {
+          "type": "string",
+          "description": "Description of expected snapshot"
+        }
+      },
+      "required": ["operation", "expected"],
+      "additionalProperties": false
+    },
+    "SnapshotStaleDetails": {
+      "type": "object",
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "description": "ID of the stale snapshot"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when snapshot was created"
+        },
+        "staleness_reason": {
+          "type": "string",
+          "description": "Description of what has changed"
+        }
+      },
+      "required": ["snapshot_id"],
+      "additionalProperties": false
+    },
+    "PolicyBlockDetails": {
+      "type": "object",
+      "properties": {
+        "rule": {
+          "type": "string",
+          "description": "Policy rule that was violated"
+        },
+        "required_level": {
+          "type": "string",
+          "description": "Required approval level"
+        },
+        "current_level": {
+          "type": "string",
+          "description": "Current approval level"
+        },
+        "context": {
+          "type": "string",
+          "description": "Additional context about the violation"
+        }
+      },
+      "required": ["rule", "required_level", "current_level", "context"],
+      "additionalProperties": false
+    },
+    "ProtectedPathDetails": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path that is protected"
+        },
+        "protection_rule": {
+          "type": "string",
+          "description": "Rule that protects this path"
+        },
+        "attempted_operation": {
+          "type": "string",
+          "description": "Operation that was attempted"
+        }
+      },
+      "required": ["path", "protection_rule", "attempted_operation"],
+      "additionalProperties": false
+    },
+    "PrivilegeEscalationDetails": {
+      "type": "object",
+      "properties": {
+        "escalation_type": {
+          "type": "string",
+          "description": "Type of privilege escalation detected"
+        },
+        "current_privileges": {
+          "type": "string",
+          "description": "Current privilege level"
+        },
+        "attempted_privileges": {
+          "type": "string",
+          "description": "Attempted privilege level"
+        },
+        "security_context": {
+          "type": "string",
+          "description": "Additional security context"
+        }
+      },
+      "required": ["escalation_type", "current_privileges", "attempted_privileges", "security_context"],
+      "additionalProperties": false
+    },
+    "GitDirtyDetails": {
+      "type": "object",
+      "properties": {
+        "dirty_files": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of dirty files"
+        },
+        "modified_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of modified files"
+        },
+        "branch": {
+          "type": "string",
+          "description": "Current branch name"
+        }
+      },
+      "required": ["dirty_files", "modified_files"],
+      "additionalProperties": false
+    },
+    "VcsConflictDetails": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "Location where conflict occurred"
+        },
+        "conflict_type": {
+          "type": "string",
+          "description": "Type of conflict"
+        },
+        "conflicted_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files involved in conflict"
+        },
+        "resolution_hint": {
+          "type": "string",
+          "description": "Suggested resolution steps"
+        }
+      },
+      "required": ["location", "conflict_type", "conflicted_files"],
+      "additionalProperties": false
+    },
+    "TestFailDetails": {
+      "type": "object",
+      "properties": {
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of failed tests"
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of tests"
+        },
+        "test_framework": {
+          "type": "string",
+          "description": "Framework used for testing"
+        },
+        "failure_details": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Detailed failure information"
+        }
+      },
+      "required": ["failed_count", "total_count", "test_framework", "failure_details"],
+      "additionalProperties": false
+    },
+    "TestTimeoutDetails": {
+      "type": "object",
+      "properties": {
+        "timeout_secs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout that was exceeded"
+        },
+        "test_framework": {
+          "type": "string",
+          "description": "Framework that was executing tests"
+        },
+        "running_tests": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tests that were running when timeout occurred"
+        }
+      },
+      "required": ["timeout_secs", "test_framework", "running_tests"],
+      "additionalProperties": false
+    },
+    "SandboxDeniedDetails": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Reason why sandbox denied the operation"
+        },
+        "active_profile": {
+          "type": "string",
+          "description": "Sandbox profile that was active"
+        },
+        "attempted_operation": {
+          "type": "string",
+          "description": "Operation that was attempted"
+        },
+        "violated_policy": {
+          "type": "string",
+          "description": "Policy that was violated"
+        }
+      },
+      "required": ["reason", "active_profile", "attempted_operation"],
+      "additionalProperties": false
+    },
+    "ResourceLimitDetails": {
+      "type": "object",
+      "properties": {
+        "resource_type": {
+          "type": "string",
+          "description": "Type of resource that was exhausted"
+        },
+        "current_usage": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Current usage level"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum allowed usage"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement"
+        }
+      },
+      "required": ["resource_type", "current_usage", "limit", "unit"],
+      "additionalProperties": false
+    },
+    "IoErrorDetails": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "description": "Operation that was being performed"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path involved in the operation"
+        },
+        "source": {
+          "type": "string",
+          "description": "Underlying I/O error"
+        }
+      },
+      "required": ["operation", "source"],
+      "additionalProperties": false
+    },
+    "InternalErrorDetails": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "description": "Component where the error occurred"
+        },
+        "message": {
+          "type": "string",
+          "description": "Descriptive error message"
+        },
+        "cause": {
+          "type": "string",
+          "description": "Optional cause chain for debugging"
+        },
+        "correlation_id": {
+          "type": "string",
+          "description": "Error correlation ID for support"
+        }
+      },
+      "required": ["component", "message", "correlation_id"],
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "code": "E_INVALID_DIFF",
+      "message": "Format de patch invalide ou corrompu",
+      "hint": "Vérifiez que le patch est un diff unifié valide",
+      "actionable": true,
+      "details": {
+        "reason": "Missing header line",
+        "line_number": 3
+      }
+    },
+    {
+      "code": "E_POLICY_BLOCK",
+      "message": "La politique de sécurité bloque l'opération demandée",
+      "hint": "Augmentez le niveau d'approbation ou modifiez la politique",
+      "actionable": true,
+      "details": {
+        "rule": "protected_paths",
+        "required_level": "trusted",
+        "current_level": "moderate",
+        "context": "Attempt to modify .env file"
+      }
+    },
+    {
+      "code": "E_INTERNAL",
+      "message": "Erreur interne ou condition inattendue",
+      "hint": "Contactez le support technique avec les détails de l'erreur",
+      "actionable": false,
+      "details": {
+        "component": "snapshot_manager",
+        "message": "Failed to acquire lock",
+        "correlation_id": "550e8400-e29b-41d4-a716-446655440000"
+      }
+    }
+  ]
+}

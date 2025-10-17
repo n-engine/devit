@@ -1,0 +1,63 @@
+[workspace]
+sandbox_root = "C:\\Users\\naskel"
+
+[daemon]
+socket = "\\\\.\\pipe\\devitd"
+mode = "daemon"
+
+[orchestration.capabilities.screenshot]
+enabled = true
+rate_limit = "10/minute"
+
+[orchestration.capabilities.desktop]
+enabled = true
+keyboard = true
+mouse = true
+rate_limit = "100/minute"
+
+[tools.screenshot]
+enabled = true
+backend = "native"    # (optionnel – sur Windows, c’est le backend par défaut)
+format = "png"
+
+[capabilities.screenshot]
+enabled = true
+rate_limit = { max_actions = 5, per_seconds = 60 }  # ajuste si besoin
+
+[tools.desktop]
+enabled = true
+
+[workers.claude_code]
+type = "cli"
+binary = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+args = [
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', 'C:\Users\naskel\AppData\Roaming\npm\claude.ps1',
+    '--print', '--output-format', 'json', '--dangerously-skip-permissions'
+]
+timeout = 60
+parse_mode = "json"
+
+[workers.codex]
+type = "mcp"
+binary = "codex"
+args = ["--cd", "z:/", "--model", "{model}", "mcp-server"]
+timeout = 180
+mcp_tool = "codex"
+default_model = "gpt-5"
+allowed_models = ["gpt-5-codex", "gpt-5"]
+
+[workers.ollama_test]
+type = "cli"
+binary = "ollama"
+args = ["run", "{model}", "--format", "json"]
+timeout = 256
+parse_mode = "json"
+default_model = "mistral-nemo:12b"
+allowed_models = ["llama3:8b", "llama3.3:70b", "mistral-nemo:12b"]
+
+[orchestration.notify_hook]
+enabled = true
+command = "Z:\\scripts\\devit_notify_wrapper.bat"

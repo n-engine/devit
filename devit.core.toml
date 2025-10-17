@@ -1,0 +1,54 @@
+[workspace]
+sandbox_root = "/home/naskel/workspace/devIt"
+
+[daemon]
+socket = "/tmp/devitd.sock"
+mode = "daemon"
+
+[orchestration.capabilities.screenshot]
+enabled = true
+rate_limit = "10/minute"
+
+[orchestration.capabilities.desktop]
+enabled = true
+keyboard = true
+mouse = true
+rate_limit = "100/minute"
+
+[tools.screenshot]
+enabled = true
+backend = "scrot"
+format = "png"
+output_dir = ".devit/screenshots"
+
+[tools.desktop]
+enabled = true
+
+[workers.claude_code]
+type = "cli"
+binary = "/home/naskel/.npm-global/bin/claude"
+args = ["--print", "--output-format", "json", "--dangerously-skip-permissions"]
+timeout = 60
+parse_mode = "json"
+
+[workers.codex]
+type = "mcp"
+binary = "/home/naskel/.npm-global/bin/codex"
+args = ["--cd", "/home/naskel/workspace/devIt", "--model", "{model}", "mcp-server"]
+timeout = 180
+mcp_tool = "codex"
+default_model = "gpt-5"
+allowed_models = ["gpt-5-codex", "gpt-5"]
+
+[workers.ollama_test]
+type = "cli"
+binary = "ollama"
+args = ["run", "{model}", "--format", "json"]
+timeout = 256
+parse_mode = "json"
+default_model = "mistral-nemo:12b"
+allowed_models = ["llama3:8b", "llama3.3:70b", "mistral-nemo:12b"]
+
+[orchestration.notify_hook]
+enabled = true
+command = "/home/naskel/bin/ping_claude"

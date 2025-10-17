@@ -1,0 +1,214 @@
+# =============================================================================
+# DevIt Configuration Example
+# =============================================================================
+# This is a comprehensive example configuration for DevIt.
+# Copy this to your project root as 'devit.toml' and customize as needed.
+
+# =============================================================================
+# LLM Configuration (Recommended - Modern API)
+# =============================================================================
+[llm]
+# Backend selection: ollama|openai|lmstudio
+backend = "ollama"
+
+# Model endpoint (auto-configured based on backend, but can be overridden)
+endpoint = "http://localhost:11434/v1"
+
+# Model name (backend-specific)
+model = "llama3.1:8b"
+
+# Request timeout in seconds
+timeout_s = 60
+
+# Maximum tokens in response
+max_tokens = 2048
+
+# =============================================================================
+# Backend Configuration (Legacy - for compatibility)
+# =============================================================================
+[backend]
+# Backend type - currently supports "openai_like" for OpenAI-compatible APIs
+kind = "openai_like"
+
+# Base URL for your LLM API endpoint
+# Examples:
+#   - Ollama: "http://localhost:11434/v1"
+#   - LM Studio: "http://localhost:1234/v1"
+#   - OpenAI: "https://api.openai.com/v1"
+#   - Local providers: "http://localhost:8000/v1"
+base_url = "http://localhost:11434/v1"
+
+# Model to use for code generation
+# Examples:
+#   - Ollama: "llama3.1:8b", "codellama:7b", "deepseek-coder"
+#   - OpenAI: "gpt-4", "gpt-3.5-turbo"
+#   - Local: depends on your model
+model = "llama3.1:8b"
+
+# API key (optional for local LLMs, required for cloud APIs)
+# Can also be set via DEVIT_API_KEY environment variable
+# api_key = "your-api-key-here"
+
+# Request timeout in seconds (default: 120)
+timeout_secs = 120
+
+# Maximum retry attempts for failed requests (default: 3)
+max_retries = 3
+
+# Custom parameters for the backend (optional)
+# These are passed directly to the LLM API
+[backend.custom_params]
+# temperature = 0.1
+# max_tokens = 2048
+# top_p = 0.9
+
+# =============================================================================
+# Security & Approval Policies
+# =============================================================================
+[policy]
+# Approval level - controls when DevIt asks for confirmation
+# Options:
+#   - "untrusted": Always ask for confirmation (safest, default)
+#   - "on_request": Only proceed with --yes flag or on user request
+#   - "on_failure": Ask only when tests fail after applying patches
+#   - "never": Fully automated (use with caution)
+approval = "on_request"
+
+# Sandbox isolation level - controls file system access
+# Options:
+#   - "read_only": Cannot modify files (safest)
+#   - "workspace_write": Can modify project files only
+#   - "danger_full_access": Full system access (dangerous)
+sandbox = "workspace_write"
+
+# =============================================================================
+# Sandbox Configuration - Resource Limits & Isolation
+# =============================================================================
+[sandbox]
+# CPU time limit in seconds (default: 30)
+cpu_limit = 30
+
+# Memory limit in megabytes (default: 1024)
+mem_limit_mb = 1024
+
+# Network access in sandbox
+# Options: "off" (default, safest), "full" (required for some operations)
+net = "off"
+
+# =============================================================================
+# Git Integration Settings
+# =============================================================================
+[git]
+# Use conventional commit format (default: true)
+conventional = true
+
+# Maximum number of staged files to process (default: 10)
+max_staged_files = 10
+
+# Use git notes for additional metadata (default: false)
+use_notes = true
+
+# =============================================================================
+# Provenance & Attestation
+# =============================================================================
+[provenance]
+# Include DevIt provenance footer in commit messages (default: false)
+footer = true
+
+# =============================================================================
+# Pre-commit Checks - Code Quality Gates
+# =============================================================================
+[precommit]
+# Enable/disable check families (defaults true if section absent)
+rust = true
+javascript = true
+python = true
+
+# Extra commands executed before apply (bash -lc context)
+additional = [
+  # "bash -lc 'make lint'",
+  # "bash -lc 'make security-check'"
+]
+
+# Families that fail the gate (others are best-effort)
+fail_on = ["rust", "javascript", "python"]
+
+# Profiles allowed to bypass with --no-precommit (requires --yes)
+allow_bypass_profiles = ["danger"]
+
+# =============================================================================
+# MCP (Model Context Protocol) Configuration
+# =============================================================================
+[mcp]
+# MCP profile for approval policies
+# Options: "safe", "std", "danger"
+profile = "std"
+
+# Custom tool approval overrides (optional)
+[mcp.approvals]
+# "server.stats.reset" = "never"
+# "devit.tool_call" = "on_request"
+
+# =============================================================================
+# Code Quality Thresholds - CI/CD Integration
+# =============================================================================
+[quality]
+# Maximum number of test failures before blocking (default: 0)
+max_test_failures = 0
+
+# Maximum number of lint errors before blocking (default: 0)
+max_lint_errors = 0
+
+# Allow lint warnings (default: true)
+allow_lint_warnings = true
+
+# Fail if reports are missing (default: false)
+fail_on_missing_reports = false
+
+# =============================================================================
+# Commit Message Configuration - Conventional Commits
+# =============================================================================
+[commit]
+# Maximum subject line length (default: 72)
+max_subject = 72
+
+# Default commit type for auto-generated messages (default: "feat")
+default_type = "refactor"
+
+# Commit body template file path (optional)
+template_body = ".devit/commit_body.tmpl"
+
+# Scope aliases for common project areas
+[commit.scopes_alias]
+"crates/cli/src/mcp" = "mcp"
+"crates/cli/src/context" = "context"
+"crates/cli/src/plugins" = "plugins"
+"crates/cli/src/bin" = "cli"
+".github" = "ci"
+"docs" = "docs"
+
+# =============================================================================
+# Environment-specific Overrides
+# =============================================================================
+# You can override any setting using environment variables:
+#
+# DEVIT_BACKEND_URL="http://localhost:8000/v1"
+# DEVIT_MODEL="custom-model"
+# DEVIT_API_KEY="your-key"
+# DEVIT_LOG_LEVEL="debug"
+# DEVIT_APPROVAL="never"  # Use with caution!
+# DEVIT_SANDBOX="workspace_write"
+# RUST_LOG="devit=debug"  # Rust logging
+#
+# Environment variables take precedence over config file settings.
+
+# =============================================================================
+# Getting Started
+# =============================================================================
+# 1. Start with safe defaults and test with --dry-run
+# 2. Configure your LLM endpoint (base_url and model)
+# 3. Move from "read_only" to "workspace_write" when ready
+# 4. Enable quality checks for your project type
+# 5. Customize commit messages and scopes
+#
+# For complete documentation, see README.md

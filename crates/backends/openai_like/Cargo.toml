@@ -1,0 +1,19 @@
+# -----------------------------
+# crates/backends/openai_like/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-backend-openai"
+version.workspace = true
+edition = "2021"
+
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+
+
+devit-common = { path = "../../common" }

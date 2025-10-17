@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ---- Config rapide ----
+# SKIP_HOOK=1       → saute le hook
+# FULL_HOOK=1       → exécute Clippy complet (plus lent)
+# SYM_GUARD=…       → regex personnalisée pour les symboles
+
+if [[ "${SKIP_HOOK:-}" == "1" ]]; then
+  echo "⏭  pre-commit: SKIP_HOOK=1 → ignoré"
+  exit 0
+fi
+
+# Fichiers Rust indexés (staged)
+STAGED_RS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
+if [[ -z "$STAGED_RS" ]]; then
+  echo "✅ pre-commit: aucun .rs indexé, rien à vérifier."
+  exit 0
+fi
+
+echo "🔎 pre-commit: vérification du code Rust…"
+
+# 1) Format (rapide)
+cargo fmt --all -- --check
+
+# 2) Build léger (rapide). On évite clippy systématique pour la vitesse.
+cargo check --workspace -q
+
+# 3) (désactivé) Garde-fou anti-doublons trop bruyant pour l’instant
+#SYM_REGEX="${SYM_GUARD:-pub (struct|enum|trait|fn) (AtomicPatcher|PatchStats|ParsedPatch|PatchHunk|PatchLine|DelegatedTask|Orchestration|Journal|Std(Error|Response)|SnapshotId|FileContent|Policy(Action|Rule)|OperationType|Task(Status|Notification))}"
+#
+#echo "🧭 scan doublons de symboles publics… (désactivé)"
+#if command -v rg >/dev/null 2>&1; then
+#  rg -n "$SYM_REGEX" crates | tee /tmp/pub_symbols.txt || true
+#else
+#  grep -RInE "$SYM_REGEX" crates | tee /tmp/pub_symbols.txt || true
+#fi
+#
+#if grep -qv 'crates/common' /tmp/pub_symbols.txt 2>/dev/null; then
+#  echo "ℹ️  Alerte doublons ignorée (hook désactivé)."
+#fi
+
+# 4) Optionnel : Clippy strict (lent) si demandé
+if [[ "${FULL_HOOK:-}" == "1" ]]; then
+  echo "🦀 clippy strict… (peut être long)"; echo
+  cargo clippy --workspace -- -D warnings
+fi
+
+# Interdire les fichiers > 2000 lignes (sauf tests)
+find crates/mcp-tools/src -type f -name '*.rs' \
+  -exec awk 'END{if(NR>2000){exit 1}}' {} \; -print
+
+if rg -n 'DevItError::Internal\(' crates/cli | grep -v 'internal\(' >/dev/null; then
+  echo "❌ Utilisation brute de DevItError::Internal détectée (utilise DevItError::internal(...))"
+  exit 1
+fi
+
+# Interdire une redéfinition locale de OrchestrationConfig
+rg -n 'struct OrchestrationConfig\b' crates/cli && exit 1
+
+# Vérifier que to_format n’existe que côté CLI :
+rg -n 'fn to_format\(' crates/common && exit 1
+
+# Io brut interdit
+if rg -n 'DevItError::Io\s*\{' crates/cli | grep -v 'DevItError::io' >/dev/null; then
+  echo "❌ DevItError::Io brut détecté → utilise DevItError::io(Some(path)|None, err)"; exit 1
+fi
+
+# Casts usize→u32 à surveiller (dans patch.rs)
+if rg -n '\bas u32\b' crates/cli/src/core/patch.rs >/dev/null; then
+  echo "⚠️  usize→u32 encore présents dans patch.rs → remplacer par u32_sat/u32_checked"; exit 1
+fi
+
+
+echo "✅ pre-commit: OK"
+exit 0

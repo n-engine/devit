@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devit.io/schemas/response.schema.json",
+  "title": "DevIt Standard Response",
+  "description": "Schema for all DevIt API responses with consistent structure",
+  "type": "object",
+  "required": ["success", "timestamp"],
+  "properties": {
+    "success": {
+      "title": "Operation Success",
+      "description": "Indicates whether the operation completed successfully",
+      "type": "boolean"
+    },
+    "timestamp": {
+      "title": "Response Timestamp",
+      "description": "ISO 8601 timestamp when the response was generated",
+      "type": "string",
+      "format": "date-time"
+    },
+    "request_id": {
+      "title": "Request Identifier",
+      "description": "Optional unique identifier for request tracing and correlation",
+      "type": "string",
+      "format": "uuid"
+    },
+    "error": {
+      "title": "Error Information",
+      "description": "Present when success is false, contains detailed error information",
+      "$ref": "https://devit.io/schemas/error.schema.json"
+    },
+    "data": {
+      "title": "Response Data",
+      "description": "Present when success is true, contains operation-specific response data",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "object" },
+        { "type": "array" },
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "success": { "const": true }
+        }
+      },
+      "then": {
+        "properties": {
+          "error": false
+        },
+        "required": ["data"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "success": { "const": false }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": false
+        },
+        "required": ["error"]
+      }
+    }
+  ],
+  "$defs": {
+    "SuccessResponse": {
+      "title": "Success Response",
+      "type": "object",
+      "properties": {
+        "success": { "const": true },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "request_id": { "type": "string", "format": "uuid" },
+        "data": {}
+      },
+      "required": ["success", "timestamp", "data"],
+      "additionalProperties": false
+    },
+    "ErrorResponse": {
+      "title": "Error Response",
+      "type": "object",
+      "properties": {
+        "success": { "const": false },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "request_id": { "type": "string", "format": "uuid" },
+        "error": { "$ref": "https://devit.io/schemas/error.schema.json" }
+      },
+      "required": ["success", "timestamp", "error"],
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "success": true,
+      "timestamp": "2024-01-15T10:30:00Z",
+      "request_id": "550e8400-e29b-41d4-a716-446655440000",
+      "data": {
+        "message": "Patch applied successfully",
+        "modified_files": ["src/main.rs"],
+        "lines_changed": 2
+      }
+    },
+    {
+      "success": false,
+      "timestamp": "2024-01-15T10:30:00Z",
+      "request_id": "550e8400-e29b-41d4-a716-446655440001",
+      "error": {
+        "code": "E_INVALID_DIFF",
+        "message": "Format de patch invalide ou corrompu",
+        "hint": "Vérifiez que le patch est un diff unifié valide",
+        "actionable": true,
+        "details": {
+          "reason": "Missing header line",
+          "line_number": 3
+        }
+      }
+    },
+    {
+      "success": true,
+      "timestamp": "2024-01-15T10:30:00Z",
+      "data": null
+    }
+  ]
+}

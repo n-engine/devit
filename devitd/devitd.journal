@@ -1,0 +1,2 @@
+{"seq":1,"ts":1759967465,"ev":"REGISTER","msg_id":"2d1567e3-208b-4ed4-b188-4f976d0cf168","from":"test","to":"orchestrator","meta":{"capabilities":["delegate","notify"],"pid":18528,"version":null},"prev":"","hash":"i6rEKzzYgfKVVoHHls5CldBLWRPVtaXNWSeNgjEnjQc="}
+{"seq":1,"ts":1759967465,"ev":"REGISTER","msg_id":"be9f4333-ff7d-4313-b338-b98864285e05","from":"test","to":"orchestrator","meta":{"capabilities":["delegate","notify"],"pid":18528,"version":null},"prev":"","hash":"4wfywzpoJcefgkFVU4rUBR3lWvhm7KvvjxkoXLCgWY4="}

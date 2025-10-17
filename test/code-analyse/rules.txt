@@ -1,0 +1,33 @@
+# C Code Analysis Rules
+# Format: RULE_ID|SEVERITY|PATTERN|DESCRIPTION|SUGGESTION
+
+# Security Rules
+no_gets|error|\bgets\s*\(|Never use gets() function (buffer overflow risk)|Use fgets() instead
+no_strcpy|warning|\bstrcpy\s*\(|Unsafe string copy function|Use strncpy() or snprintf() instead
+no_strcat|warning|\bstrcat\s*\(|Unsafe string concatenation|Use strncat() or snprintf() instead
+
+# Code Quality Rules
+no_goto|warning|\bgoto\b|Avoid using goto statements|Use structured control flow instead
+no_magic_numbers|info|\b\d{3,}\b|Avoid magic numbers|Use named constants instead
+line_too_long|info|^.{121,}$|Line length exceeds 120 characters|Break long lines for readability
+
+# Style Rules
+missing_space_after_keyword|warning|\b(if|for|while|switch)\(|Missing space after control flow keyword|Add space after keyword
+missing_space_around_operator|warning|[a-zA-Z0-9)][=+\-*/<>][a-zA-Z0-9(]|Missing spaces around operators|Add spaces around operators
+inconsistent_braces|warning|\)\s*{|Opening brace should be on new line|Move brace to new line
+
+# Function Rules
+function_name_convention|warning|^[A-Z][a-zA-Z0-9_]*\s+[a-z][a-zA-Z0-9_]*\s*\(|Function names should use snake_case|Use lowercase with underscores
+
+# Variable Rules
+global_variable|warning|^[a-zA-Z_][a-zA-Z0-9_]*\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;|Avoid global variables when possible|Consider passing as parameters instead
+
+# Comment Rules
+missing_function_comment|info|^[a-zA-Z_][a-zA-Z0-9_]*\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\([^)]*\)\s*{|Function missing documentation|Add comment describing function purpose
+
+# Memory Management
+missing_free|warning|\bmalloc\s*\(|Potential memory leak - ensure free() is called|Match every malloc() with free()
+double_free|error|\bfree\s*\([^)]*\).*\bfree\s*\(|Potential double free|Set pointer to NULL after free()
+
+# Preprocessor
+ifndef_guard_missing|warning|^#ifndef\s+[A-Z_]+_H|Header file missing include guard|Add #ifndef guard to prevent multiple inclusion

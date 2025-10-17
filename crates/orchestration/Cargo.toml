@@ -1,0 +1,36 @@
+[package]
+name = "devit-orchestration"
+version.workspace = true
+edition.workspace = true
+
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = ["daemon"]
+daemon = ["dep:devitd-client"]
+
+[dependencies.devitd-client]
+path = "../../devitd-client"
+optional = true
+
+[dev-dependencies]
+once_cell = "1"
+tempfile = "3"
+devit-common = { path = "../common" }
+
+[[example]]
+name = "basic_delegation"
+path = "examples/basic_delegation.rs"
+
+[[example]]
+name = "daemon_monitoring"
+path = "examples/daemon_monitoring.rs"

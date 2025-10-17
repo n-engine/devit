@@ -1,0 +1,21 @@
+diff --git a/src/helper.rs b/src/helper.rs
+new file mode 100644
+index 0000000..a1b5d43
+--- /dev/null
++++ b/src/helper.rs
+@@ -0,0 +1,7 @@
++/// A simple helper function for demonstrations
++pub fn add_numbers(a: i32, b: i32) -> i32 {
++    a + b
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn test_add_numbers() {
++        assert_eq!(add_numbers(2, 3), 5);
++        assert_eq!(add_numbers(-1, 1), 0);
++    }
++}

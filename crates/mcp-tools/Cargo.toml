@@ -1,0 +1,37 @@
+[package]
+name = "mcp-tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+mcp-core = { path = "../mcp-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+walkdir = { workspace = true }
+base64 = "0.22"
+anyhow = { workspace = true }
+devit-common = { path = "../common" }
+devit-cli = { path = "../cli" }
+devit-orchestration = { path = "../orchestration" }
+devitd-client = { path = "../../devitd-client" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+regex = "1"
+nix = { version = "0.27", features = ["process"] }
+fs2 = "0.4"
+libc = "0.2"
+devit-sandbox = { path = "../sandbox" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

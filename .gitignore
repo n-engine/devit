@@ -1,0 +1,117 @@
+# Rust build artifacts
+/target/
+/devit-landing-preview/
+/site/
+**/*.rs.bk
+Cargo.lock
+
+# DevIt runtime
+/.devit/
+/devitd.journal
+/.devit-snapshots/
+
+## Bench
+/bench/
+
+## LLM's&
+.claude
+.claude_desktop
+.claude_project_prompt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs and debug
+*.log
+*.trace
+debug.txt
+
+# Test artifacts
+test_*.txt
+test_*.rs
+test_*.json
+*.test
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.old
+tmp/
+temp/
+
+# Archives
+*.tar.gz
+*.tar.bz2
+*.zip
+*.7z
+
+# Performance/benchmark
+perf_*.txt
+stress_*.txt
+bench_*.json
+*.csv
+
+# Screenshots and media
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.mp4
+*.avi
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+
+# Archive directory (cleanup artifacts)
+.archive/
+bench/
+PROJECT_TRACKING/
+docs/archive/
+scripts/testing/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+System Volume Information/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Audit files (keep in PROJECT_TRACKING)
+audit_*.txt
+audit_*.md
+*_audit.txt
+
+# Local config overrides
+*.local.toml
+devit.user.toml
+
+# Credentials (NEVER commit)
+*.key
+*.pem
+*.cert
+credentials.json
+secrets.toml
+# Security/changelog placeholders (local only)
+SECURITY.md
+CHANGELOG.md
+# Security contacts will be published when public disclosure process is defined.
+# Changelog is kept internal until first public release.

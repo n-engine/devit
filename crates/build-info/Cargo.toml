@@ -1,0 +1,11 @@
+[package]
+name = "devit-build-info"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+once_cell = "1"
+
+[build-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

@@ -1,0 +1,21 @@
+# -----------------------------
+# crates/tools/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-tools"
+version.workspace = true
+edition = "2021"
+
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+which = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
+
+[lib]
+path = "src/lib.rs"

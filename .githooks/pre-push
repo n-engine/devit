@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "🚦 pre-push: vérification complète avant envoi…"
+
+# 1) Build workspace
+cargo check --workspace
+
+# 2) Tests complets (rapide si déjà buildé)
+cargo test --workspace --all-features --no-fail-fast
+
+# 3) Clippy strict (interdit les warnings)
+cargo clippy --workspace -- -D warnings
+
+# 4) Scan symboles publics sensibles (comme le pre-commit)
+SYM_REGEX="pub (struct|enum|trait|fn) (AtomicPatcher|PatchStats|ParsedPatch|PatchHunk|PatchLine|DelegatedTask|Orchestration|Journal|Std(Error|Response)|SnapshotId|FileContent|Policy(Action|Rule)|OperationType|Task(Status|Notification))"
+
+echo "🧭 scan doublons de symboles publics…"
+if command -v rg >/dev/null 2>&1; then
+  rg -n "$SYM_REGEX" crates | tee /tmp/pub_symbols.txt || true
+else
+  grep -RInE "$SYM_REGEX" crates | tee /tmp/pub_symbols.txt || true
+fi
+
+if grep -qv 'crates/common' /tmp/pub_symbols.txt; then
+  echo "❌ Doublon public détecté hors crates/common :"
+  grep -v 'crates/common' /tmp/pub_symbols.txt || true
+  echo "   → Déplacez la logique vers crates/common avant de pousser."
+  exit 1
+fi
+
+echo "✅ pre-push: OK → push autorisé."

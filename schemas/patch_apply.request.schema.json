@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devit.io/schemas/patch_apply.request.schema.json",
+  "title": "DevIt Patch Apply Request",
+  "description": "Schema for patch application requests with idempotency support",
+  "type": "object",
+  "required": ["diff"],
+  "properties": {
+    "diff": {
+      "title": "Unified Diff",
+      "description": "Unified diff content to apply to the workspace",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1048576,
+      "pattern": "^(---|\\+\\+\\+|@@|\\+|\\-| |\\\\).*",
+      "examples": [
+        "--- a/file.txt\n+++ b/file.txt\n@@ -1,3 +1,3 @@\n line1\n-line2\n+line2 modified\n line3"
+      ]
+    },
+    "idempotency_key": {
+      "title": "Idempotency Key",
+      "description": "Optional UUID to ensure idempotent operations and prevent duplicate applications",
+      "type": "string",
+      "format": "uuid",
+      "examples": [
+        "550e8400-e29b-41d4-a716-446655440000"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "diff": "--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,5 +1,5 @@\n fn main() {\n-    println!(\"Hello, world!\");\n+    println!(\"Hello, DevIt!\");\n }",
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    {
+      "diff": "--- a/README.md\n+++ b/README.md\n@@ -1,3 +1,4 @@\n # Project\n \n+This is a description.\n Some content."
+    }
+  ]
+}

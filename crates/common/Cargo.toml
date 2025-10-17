@@ -1,0 +1,35 @@
+# -----------------------------
+# crates/common/Cargo.toml
+# -----------------------------
+[package]
+name = "devit-common"
+version.workspace = true
+edition = "2021"
+
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+path-clean = "1.0"
+devit-orchestration = { path = "../orchestration" }
+nix = { version = "0.27", features = ["process", "signal"] }
+fs2 = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true }
+
+[features]
+default = ["daemon"]
+daemon = ["devit-orchestration/daemon"]

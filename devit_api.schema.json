@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DevIt Agent API",
+  "description": "Capacités de l’agent DevIt, appelables par un LLM externe.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "apply_patch",
+      "type": "object",
+      "properties": {
+        "action": { "const": "apply_patch" },
+        "diff": {
+          "type": "string",
+          "description": "Diff unifié POSIX LF complet à appliquer"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "description": "UUID utilisé pour rendre l'opération idempotente",
+          "format": "uuid",
+          "nullable": true
+        }
+      },
+      "required": ["action", "diff"]
+    },
+    {
+      "title": "run_recipe",
+      "type": "object",
+      "properties": {
+        "action": { "const": "run_recipe" },
+        "name": {
+          "type": "string",
+          "description": "Nom de la recette à exécuter"
+        }
+      },
+      "required": ["action", "name"]
+    },
+    {
+      "title": "open_view",
+      "type": "object",
+      "properties": {
+        "action": { "const": "open_view" },
+        "target": {
+          "enum": ["diff", "log"],
+          "description": "Type de vue à ouvrir"
+        }
+      },
+      "required": ["action", "target"]
+    },
+    {
+      "title": "journal_append",
+      "type": "object",
+      "properties": {
+        "action": { "const": "journal_append" },
+        "entry": {
+          "type": "object",
+          "description": "Entrée JSON arbitraire à écrire dans le journal"
+        }
+      },
+      "required": ["action", "entry"]
+    }
+  ]
+}

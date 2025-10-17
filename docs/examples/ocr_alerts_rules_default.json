@@ -1,0 +1,30 @@
+[
+  {
+    "name": "build_failures",
+    "zone": "terminal_bottom",
+    "pattern": "(error:|unexpected argument|failed to (compile|parse)|build failed|compilation failed|cmake error|linker (error|not found)|cargo.*failed)",
+    "severity": "critical",
+    "action": "notify"
+  },
+  {
+    "name": "port_conflicts",
+    "zone": "terminal_bottom",
+    "pattern": "(port.*already.*(use|in use)|address.*already.*(use|in use)|EADDRINUSE)",
+    "severity": "warning",
+    "action": "notify"
+  },
+  {
+    "name": "success_confirmations",
+    "zone": "terminal_bottom",
+    "pattern": "(✓.*PASS|tests?.*passed|build.*(success|succeeded)|compilation.*success)",
+    "severity": "info",
+    "action": "notify"
+  },
+  {
+    "name": "panic_crash",
+    "zone": "error_zone",
+    "pattern": "(panic|segfault|core dumped|fatal exception)",
+    "severity": "critical",
+    "action": "notify"
+  }
+]
