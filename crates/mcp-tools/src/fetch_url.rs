@@ -13,6 +13,7 @@ use chrono::Utc;
 use devit_common::cache::cache_key;
 use devit_common::limits::{resolve_fetch_limits, EffectiveLimits, LimitSources};
 use mcp_core::{McpError, McpResult, McpTool};
+use reqwest::error::Kind as ReqwestErrorKind;
 use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, CACHE_CONTROL, PRAGMA, USER_AGENT};
 use reqwest::redirect::Policy as RedirectPolicy;
 use reqwest::Client;
@@ -456,9 +457,10 @@ impl McpTool for FetchUrlTool {
                 }))
             }
             Err(e) => {
-                let is_redirect = e.is_redirect();
-                let code = if is_redirect { "REDIRECT_LOOP" } else { "NETWORK_ERROR" };
-                info!(target: "mcp.fetch", op="fetch", err=%e.to_string(), redirect=%is_redirect, cache_key=%cache_key_val, "fetch failed");
+                // Map reqwest redirect loops explicitly when redirect policy is exceeded
+                let is_redirect_loop = matches!(e.kind(), ReqwestErrorKind::RedirectLoop);
+                let code = if is_redirect_loop { "REDIRECT_LOOP" } else { "NETWORK_ERROR" };
+                info!(target: "mcp.fetch", op="fetch", err=%e.to_string(), redirect_loop=%is_redirect_loop, cache_key=%cache_key_val, "fetch failed");
                 let meta = json!({
                     "trace_id": Uuid::new_v4().to_string(),
                     "robots_policy": robots_policy_str,
