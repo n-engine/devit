@@ -1045,10 +1045,10 @@ fn read_patch(input: &str) -> Result<String> {
 
 fn ensure_git_repo() -> Result<()> {
     if !git::is_git_available() {
-        anyhow::bail!("git n'est pas disponible dans le PATH.");
+        anyhow::bail!("git is not available in PATH.");
     }
     if !git::in_repo() {
-        anyhow::bail!("pas dans un dépôt git (git rev-parse --is-inside-work-tree).");
+        anyhow::bail!("not inside a git repository (git rev-parse --is-inside-work-tree).");
     }
     Ok(())
 }
@@ -1230,7 +1230,7 @@ fn tool_call_json(
         "fs_patch_apply" => {
             ensure_git_repo()?;
             if cfg.policy.sandbox.to_lowercase() == "read-only" {
-                anyhow::bail!("policy.sandbox=read-only: apply refusé (aucune écriture autorisée)");
+                anyhow::bail!("policy.sandbox=read-only: apply denied (no write operations allowed)");
             }
             let patch = args.get("patch").and_then(|v| v.as_str()).unwrap_or("");
             let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("index");
@@ -1294,7 +1294,7 @@ fn tool_call_json(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             if patch.is_empty() {
-                anyhow::bail!("fs_patch_apply: champ 'patch' requis (contenu du diff)");
+                anyhow::bail!("fs_patch_apply: 'patch' field is required (diff content)");
             }
             // Precommit gate
             if precommit_only {
@@ -1363,14 +1363,14 @@ fn tool_call_json(
             }
             let ask = requires_approval_tool(&cfg.policy, "git", yes, "write");
             if ask && !ask_approval()? {
-                anyhow::bail!("Annulé par l'utilisateur.");
+                anyhow::bail!("Cancelled by user.");
             }
             let ok = match mode {
                 "worktree" => git::apply_worktree(patch)?,
                 _ => git::apply_index(patch)?,
             };
             if !ok {
-                anyhow::bail!("Échec git apply ({mode})");
+                anyhow::bail!(format!("git apply failed ({mode})"));
             }
             // tests impacted pipeline
             let tests_enabled = match tests_mode.as_str() {
@@ -1620,11 +1620,11 @@ fn tool_call_json(
         "shell_exec" => {
             let cmd = args.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
             if cmd.is_empty() {
-                anyhow::bail!("shell_exec: champ 'cmd' requis");
+                anyhow::bail!("shell_exec: 'cmd' field is required");
             }
             let ask = requires_approval_tool(&cfg.policy, "shell", yes, "exec");
             if ask && !ask_approval()? {
-                anyhow::bail!("Annulé par l'utilisateur.");
+                anyhow::bail!("Cancelled by user.");
             }
             #[cfg(feature = "sandbox")]
             let (code, out) = sandbox::run_shell_sandboxed_capture(cmd, &cfg.policy, &cfg.sandbox)?;
@@ -1636,7 +1636,7 @@ fn tool_call_json(
             }
             Ok(serde_json::json!({"exit_code": code, "output": out}))
         }
-        _ => anyhow::bail!(format!("outil inconnu: {name}")),
+        _ => anyhow::bail!(format!("unknown tool: {name}")),
     }
 }
 
@@ -1656,7 +1656,7 @@ fn tool_call_legacy(
         "fs_patch_apply" => {
             ensure_git_repo()?;
             if cfg.policy.sandbox.to_lowercase() == "read-only" {
-                anyhow::bail!("policy.sandbox=read-only: apply refusé (aucune écriture autorisée)");
+                anyhow::bail!("policy.sandbox=read-only: apply denied (no write operations allowed)");
             }
             let patch = read_patch(input)?;
             if precommit_only {
@@ -1693,10 +1693,10 @@ fn tool_call_legacy(
             git::apply_check(&patch)?;
             let ask = requires_approval_tool(&cfg.policy, "git", yes, "write");
             if ask && !ask_approval()? {
-                anyhow::bail!("Annulé par l'utilisateur.");
+                anyhow::bail!("Cancelled by user.");
             }
             if !git::apply_index(&patch)? {
-                anyhow::bail!("Échec git apply --index (patch-only).");
+                anyhow::bail!("git apply --index failed (patch-only).");
             }
             // run impacted tests (auto on for non-danger profiles)
             let profile = cfg
@@ -1732,7 +1732,7 @@ fn tool_call_legacy(
         "shell_exec" => {
             let ask = requires_approval_tool(&cfg.policy, "shell", yes, "exec");
             if ask && !ask_approval()? {
-                anyhow::bail!("Annulé par l'utilisateur.");
+                anyhow::bail!("Cancelled by user.");
             }
             let cmd = if input == "-" {
                 anyhow::bail!("shell_exec requires a command string as input");
@@ -1752,7 +1752,7 @@ fn tool_call_legacy(
             }
             Ok(())
         }
-        _ => anyhow::bail!(format!("outil inconnu: {name}")),
+        _ => anyhow::bail!(format!("unknown tool: {name}")),
     }
 }
 
@@ -3184,7 +3184,7 @@ async fn run_sandboxed_test(
         }
         Ok(Ok(Err(e))) => {
             // Fallback to non-sandboxed execution if binary not allowed
-            if e.to_string().contains("binaire non autorisé")
+            if e.to_string().contains("unauthorized binary")
                 || e.to_string().contains("binary not allowed")
             {
                 tracing::warn!(
