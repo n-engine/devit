@@ -22,7 +22,7 @@ impl Agent {
         Ok(answer)
     }
 
-    /// Génère un message de commit (Conventional Commits) à partir du goal, d'un résumé et d'un extrait de diff.
+/// Generate a Conventional Commit message from a goal, a summary, and a diff snippet.
     /// Retourne une ligne courte (≤ 72 chars) ; body optionnel non inclus (MVP).
     pub async fn commit_message(
         &self,

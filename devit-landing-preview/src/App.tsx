@@ -1,5 +1,5 @@
 import { useRef, useState, type JSX } from 'react';
-import { ArrowRight, Shield, Terminal, GitBranch, ExternalLink, Github, Mail } from 'lucide-react';
+import { ArrowRight, Shield, Terminal, GitBranch, ExternalLink, Github, Mail, Play, Pause } from 'lucide-react';
 
 type Locale = 'en' | 'fr';
 
@@ -20,7 +20,7 @@ interface SecurityBullet {
 }
 
 interface LocaleCopy {
-  nav: { features: string; install: string; security: string; github: string; contact: string };
+  nav: { features: string; install: string; security: string; demo: string; github: string; contact: string };
   hero: { title: string; subtitle: string; points: string[]; cta: string; badge: string; disclaimer: string };
   how: { title: string; steps: StepCopy[] };
   usecases: { title: string; cases: UseCaseCopy[] };
@@ -44,11 +44,11 @@ const RAW_VERSION: string = (import.meta as any)?.env?.VITE_APP_VERSION || '0.1.
 const VERSION_BADGE_EN = `v${RAW_VERSION} Preview`;
 const VERSION_BADGE_FR = `v${RAW_VERSION} Aperçu`;
 const FOOTER_STATUS_EN = `${VERSION_BADGE_EN} • APIs subject to rapid change`;
-const FOOTER_STATUS_FR = `${VERSION_BADGE_FR} • APIs susceptibles d’évoluer rapidement`;
+const FOOTER_STATUS_FR = `${VERSION_BADGE_FR} • APIs susceptibles d'évoluer rapidement`;
 
 const COPY: Record<Locale, LocaleCopy> = {
   en: {
-    nav: { features: 'Features', install: 'Install', security: 'Security', github: 'GitHub', contact: 'Contact' },
+    nav: { features: 'Features', install: 'Install', security: 'Security', demo: 'Demo', github: 'GitHub', contact: 'Contact' },
     hero: {
       title: 'DevIT: coordinate humans & LLMs on real repos',
       subtitle: 'Sandbox-first tooling to let agents work without breaking your project.',
@@ -138,8 +138,8 @@ const COPY: Record<Locale, LocaleCopy> = {
       warning: 'Keep the MCP endpoint behind TLS and authentication; the built-in server does not enable HTTPS by itself.'
     },
     demo: {
-      title: 'Roadmap & demos',
-      note: 'Video walkthrough coming soon. Reach out if you want to join the next live session or share feedback.'
+      title: 'See DevIT in Action',
+      note: "Watch Claude use DevIT's tools."
     },
     support: { title: 'Support', issues: 'GitHub Issues', email: 'Email' },
     footer: {
@@ -149,21 +149,21 @@ const COPY: Record<Locale, LocaleCopy> = {
     }
   },
   fr: {
-    nav: { features: 'Fonctionnalités', install: 'Installation', security: 'Sécurité', github: 'GitHub', contact: 'Contact' },
+    nav: { features: 'Fonctionnalités', install: 'Installation', security: 'Sécurité', demo: 'Démo', github: 'GitHub', contact: 'Contact' },
     hero: {
-      title: 'DevIT : coordonnez humain et LLM sur votre dépôt',
+      title: 'DevIT : coordonnez humain et LLM sur votre dépôt',
       subtitle: 'Sandbox et approbations pour laisser un agent écrire du code en confiance.',
       points: [
         'Noyau CLI + daemon avec passerelle MCP optionnelle pour Claude Desktop et autres clients',
         'Application de patchs, inspection fichiers et orchestration avec validations automatiques',
-        'Linux prêt à l’emploi, macOS et Windows en cours de finalisation'
+        'Linux prêt à l\'emploi, macOS et Windows en cours de finalisation'
       ],
-      cta: 'Installer l’aperçu',
+      cta: 'Installer l\'aperçu',
       badge: VERSION_BADGE_FR,
-      disclaimer: 'Version d’aperçu — les API et réglages sécurité peuvent évoluer avant la 1.0.'
+      disclaimer: 'Version d\'aperçu — les API et réglages sécurité peuvent évoluer avant la 1.0.'
     },
     how: {
-      title: 'Comment DevIT s’insère dans votre flux',
+      title: 'Comment DevIT s\'insère dans votre flux',
       steps: [
         { num: '1', title: 'Installer la toolchain', desc: 'Compilez le CLI, le daemon et le serveur MCP via cargo install ou cargo build.' },
         { num: '2', title: 'Sécuriser le lien', desc: 'Générez un secret partagé et reliez CLI + clients MCP au socket du daemon.' },
@@ -171,7 +171,7 @@ const COPY: Record<Locale, LocaleCopy> = {
       ]
     },
     usecases: {
-      title: 'Ce qui fonctionne aujourd’hui',
+      title: 'Ce qui fonctionne aujourd\'hui',
       cases: [
         { title: 'Patch sous contrôle', desc: 'Parseur de diffs avec rollback et downgrade automatique pour binaires, exec bit ou chemins protégés.' },
         { title: 'Dépôt immaculé', desc: 'Tests et scripts dans des sandboxes temporaires pour éviter toute pollution du repo.' },
@@ -183,7 +183,7 @@ const COPY: Record<Locale, LocaleCopy> = {
       subtitle: 'Briques de défense déjà en place, avec transparence sur la suite.',
       bullets: [
         { text: 'Canonicalisation des chemins et protection contre la traversée', tone: 'ready' },
-        { text: 'Moteur d’approbation Ask / Moderate / Trusted avec dégradations automatiques', tone: 'ready' },
+        { text: 'Moteur d\'approbation Ask / Moderate / Trusted avec dégradations automatiques', tone: 'ready' },
         { text: 'Signature HMAC entre CLI ↔ daemon ↔ transport MCP', tone: 'ready' },
         { text: 'Protection replay (nonce + fenêtre temporelle)', tone: 'planned' },
         { text: 'Runtimes sandbox (bubblewrap sur Linux, Job Objects sur Windows)', tone: 'partial' },
@@ -234,13 +234,13 @@ const COPY: Record<Locale, LocaleCopy> = {
         'Exécutez `mcp-server --transport http --host 0.0.0.0 --port 3001 --auth-token <token>`',
         'Servez `/.well-known/mcp.json` avec les URLs de transport (ajoutez `?ngrok-skip-browser-warning=1` avec ngrok)',
         'Placez le tout derrière Caddy/nginx pour le TLS et désactivez la compression sur `/sse`',
-        'Enregistrez l’URL du manifest dans votre client MCP puis testez `tools/list`'
+        'Enregistrez l\'URL du manifest dans votre client MCP puis testez `tools/list`'
       ],
       warning: 'Laissez toujours MCP derrière TLS + authentification ; le serveur natif ne gère pas HTTPS nativement.'
     },
     demo: {
-      title: 'Démos & feuille de route',
-      note: 'Une vidéo est en préparation. Contactez-nous pour participer à la prochaine session live ou partager vos retours.'
+      title: 'DevIT en action',
+      note: "Regardez Claude orchestrer l\'implémentation complète d'un jeu Tetris avec les outils de délégation et monitoring de DevIT."
     },
     support: { title: 'Support', issues: 'Tickets GitHub', email: 'Email' },
     footer: {
@@ -259,10 +259,23 @@ const SECURITY_BADGE_TONE: Record<SecurityBullet['tone'], string> = {
 
 export default function App(): JSX.Element {
   const [locale, setLocale] = useState<Locale>('en');
+  const [isPlaying, setIsPlaying] = useState(true);
   const installRef = useRef<HTMLElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const copy = COPY[locale];
 
   const scrollToInstall = () => installRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const toggleVideo = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -283,6 +296,9 @@ export default function App(): JSX.Element {
             </a>
             <a className="transition hover:text-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400" href="#security">
               {copy.nav.security}
+            </a>
+            <a className="transition hover:text-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400" href="#demo">
+              {copy.nav.demo}
             </a>
             <a
               className="flex items-center gap-1 transition hover:text-cyan-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
@@ -464,12 +480,50 @@ export default function App(): JSX.Element {
           </div>
         </section>
 
-        <section className="relative mx-auto max-w-4xl px-6 pb-20 text-center" aria-labelledby="demo-title">
-          <div className="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-10">
-            <h2 id="demo-title" className="text-3xl font-bold">
-              {copy.demo.title}
-            </h2>
-            <p className="mt-4 text-slate-300">{copy.demo.note}</p>
+        <section id="demo" className="relative mx-auto max-w-6xl px-6 py-20" aria-labelledby="demo-title">
+          <div className="space-y-8">
+            <div className="text-center">
+              <h2 id="demo-title" className="text-4xl font-bold">
+                {copy.demo.title}
+              </h2>
+              <p className="mt-4 text-lg text-slate-300">{copy.demo.note}</p>
+            </div>
+
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/70 shadow-2xl">
+              {/* Gradient overlay */}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60" />
+              
+              {/* Video */}
+              <video
+                ref={videoRef}
+                className="w-full"
+                autoPlay
+                loop
+                muted
+                playsInline
+                onClick={toggleVideo}
+              >
+                <source src="/devit-demo.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+
+              {/* Play/Pause overlay button */}
+              <button
+                type="button"
+                onClick={toggleVideo}
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-900/80 p-6 backdrop-blur transition-all hover:scale-110 hover:bg-slate-800/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                aria-label={isPlaying ? 'Pause video' : 'Play video'}
+              >
+                {isPlaying ? (
+                  <Pause size={32} className="text-cyan-400" aria-hidden="true" />
+                ) : (
+                  <Play size={32} className="ml-1 text-cyan-400" aria-hidden="true" />
+                )}
+              </button>
+
+              {/* Bottom gradient bar */}
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-500" />
+            </div>
           </div>
         </section>
 

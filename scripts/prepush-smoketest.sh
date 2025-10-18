@@ -78,7 +78,7 @@ mkdir -p "$OR_DIR" && write_cfg "$OR_DIR" "on-request" "workspace-write"
   set +e
   "$BIN" run --goal demo >out.txt 2>err.txt; code=$?
   set -e
-  grep -q "nécessite --yes" err.txt && [[ $code -ne 0 ]] && pass "on-request run refused without --yes" || fail "on-request run did not refuse"
+  grep -q "requires --yes" err.txt && [[ $code -ne 0 ]] && pass "on-request run refused without --yes" || fail "on-request run did not refuse"
 )
 
 # 3) workspace-write apply path (init git repo; approve with 'y')

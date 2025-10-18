@@ -804,7 +804,7 @@ pub struct FileChange {
     /// Si le changement touche un sous-module Git
     pub touches_submodule: bool,
 
-    /// Si le changement touche .gitmodules
+    /// Whether the change touches .gitmodules
     pub touches_gitmodules: bool,
 
     /// Taille du fichier en octets (pour les binaires)
@@ -853,18 +853,18 @@ pub struct PolicyDecision {
     /// Si l'opération est autorisée
     pub allow: bool,
 
-    /// Si une confirmation utilisateur est requise
+    /// Whether user confirmation is required
     pub requires_confirmation: bool,
 
     /// Raison de la décision
     pub reason: String,
 
-    /// Niveau d'approbation dégradé si applicable
+    /// Downgraded approval level, if any
     pub downgraded_to: Option<ApprovalLevel>,
 }
 
 impl PolicyDecision {
-    /// Crée une décision d'autorisation.
+    /// Create an allow decision.
     pub fn allow(reason: String) -> Self {
         Self {
             allow: true,
@@ -874,7 +874,7 @@ impl PolicyDecision {
         }
     }
 
-    /// Crée une décision d'autorisation avec confirmation.
+    /// Create an allow decision requiring confirmation.
     pub fn allow_with_confirmation(reason: String) -> Self {
         Self {
             allow: true,
@@ -884,7 +884,7 @@ impl PolicyDecision {
         }
     }
 
-    /// Crée une décision de refus.
+    /// Create a deny decision.
     pub fn deny(reason: String) -> Self {
         Self {
             allow: false,
@@ -894,7 +894,7 @@ impl PolicyDecision {
         }
     }
 
-    /// Crée une décision avec dégradation de niveau.
+    /// Create a decision with a downgraded approval level.
     pub fn downgrade(
         reason: String,
         downgraded_to: ApprovalLevel,
@@ -913,7 +913,7 @@ impl PolicyDecision {
 mod tests {
     use super::*;
 
-    /// Crée un contexte de test avec des valeurs par défaut.
+    /// Create a test context with default values.
     fn create_test_context(
         file_changes: Vec<FileChange>,
         approval_level: ApprovalLevel,
@@ -931,7 +931,7 @@ mod tests {
         }
     }
 
-    /// Crée un changement de fichier simple pour les tests.
+    /// Create a simple file change for tests.
     fn create_simple_file_change(path: &str) -> FileChange {
         FileChange {
             path: PathBuf::from(path),
@@ -949,7 +949,7 @@ mod tests {
         }
     }
 
-    /// Crée un Policy Engine pour les tests.
+    /// Create a Policy Engine for tests.
     fn create_test_engine() -> PolicyEngine {
         PolicyEngine::new(
             ApprovalLevel::Privileged {
@@ -1046,7 +1046,7 @@ mod tests {
     fn test_ask_complex_change_requires_confirmation() {
         let engine = create_test_engine();
         let mut change = create_simple_file_change("src/main.rs");
-        change.lines_added = 50; // Dépasse le seuil simple
+        change.lines_added = 50; // Exceeds simple threshold
         let changes = vec![change];
         let context = create_test_context(changes, ApprovalLevel::Ask);
 
@@ -1061,7 +1061,7 @@ mod tests {
     fn test_moderate_too_many_files_downgrades() {
         let engine = create_test_engine();
         let mut changes = Vec::new();
-        // Créer plus de fichiers que la limite moderate
+        // Create more files than the moderate limit
         for i in 0..15 {
             changes.push(create_simple_file_change(&format!("src/file{}.rs", i)));
         }
@@ -1245,7 +1245,7 @@ mod tests {
         let decision = engine.evaluate_changes(&context).unwrap();
 
         assert!(decision.allow);
-        // Symlink interne : peut demander confirmation si changement non simple
+        // Internal symlink: may require confirmation if change is not simple
         assert!(decision.requires_confirmation);
     }
 

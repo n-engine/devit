@@ -597,9 +597,7 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Run { goal, use_mcp }) => {
             if policy_requires_yes && !assume_yes {
-                eprintln!(
-                    "La politique 'on-request' nécessite --yes pour exécuter cette commande."
-                );
+                eprintln!("Policy 'on-request' requires --yes to run this command.");
                 std::process::exit(1);
             }
             let response = handle_run(goal, use_mcp, use_json_output).await;
@@ -797,7 +795,7 @@ async fn main() -> Result<()> {
                     ext_allow.as_deref(),
                     json_out.as_deref(),
                 )?;
-                println!("index écrit: {}", written.display());
+                println!("index written: {}", written.display());
             }
         },
         Some(Commands::CommitMsg {
