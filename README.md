@@ -541,6 +541,13 @@ DevIt is the **security and coordination layer** between AI agents and your code
 
 ---
 
+## 🙏 Credits
+
+- GPT‑5 Codex — brainstorming, scaffolding, and CI/network slice support.
+- Claude Desktop — MCP client and integration partner; shaped tool ergonomics.
+
+---
+
 ## 📜 License
 
 Apache-2.0 license – See `LICENSE` file.
@@ -549,4 +556,4 @@ Apache-2.0 license – See `LICENSE` file.
 
 ---
 
-**Built with Rust 🦀, paranoia 🔐, and too many hours debugging Claude's creative patch formats.**
+**Built with Rust 🦀, paranoia 🔐, and co‑built with GPT‑5 Codex and Claude Desktop.**
