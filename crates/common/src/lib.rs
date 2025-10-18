@@ -266,11 +266,11 @@ impl std::fmt::Display for SnapshotId {
 /// Type of file change in a patch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileChangeKind {
-    /// Fichier ajouté
+    /// File added
     Add,
-    /// Fichier modifié
+    /// File modified
     Mod,
-    /// Fichier supprimé
+    /// File deleted
     Del,
     /// File content modified
     Modify,

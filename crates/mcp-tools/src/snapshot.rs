@@ -177,7 +177,7 @@ impl SnapshotContext {
         }
         let destination = snapshot_root.join(relative);
         if !file.exists() {
-            warnings.push(self.warning(relative, "Fichier introuvable"));
+            warnings.push(self.warning(relative, "File not found"));
             return Ok(());
         }
         if let Some(parent) = destination.parent() {
