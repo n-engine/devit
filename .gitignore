@@ -1,6 +1,7 @@
 # Rust build artifacts
 /target/
-/devit-landing-preview/
+## Landing preview (now versioned)
+# devit-landing-preview/
 /site/
 **/*.rs.bk
 Cargo.lock
