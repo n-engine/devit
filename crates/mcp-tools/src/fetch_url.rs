@@ -456,11 +456,13 @@ impl McpTool for FetchUrlTool {
                 }))
             }
             Err(e) => {
+
                 // Map redirect-loop heuristically (reqwest::error::Kind is private in this version)
                 let es = e.to_string().to_lowercase();
                 let is_redirect_loop = es.contains("redirect") && (es.contains("too many") || es.contains("loop"));
                 let code = if is_redirect_loop { "REDIRECT_LOOP" } else { "NETWORK_ERROR" };
                 info!(target: "mcp.fetch", op="fetch", err=%e.to_string(), redirect_loop=%is_redirect_loop, cache_key=%cache_key_val, "fetch failed");
+
                 let meta = json!({
                     "trace_id": Uuid::new_v4().to_string(),
                     "robots_policy": robots_policy_str,
