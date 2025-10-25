@@ -1,0 +1,101 @@
+  fr: {
+    nav: { features: 'Fonctionnalités', install: 'Installation', security: 'Sécurité', github: 'GitHub', contact: 'Contact' },
+    hero: {
+      title: 'DevIT : coordonnez humain et LLM sur votre dépôt',
+      subtitle: 'Sandbox et approbations pour laisser un agent écrire du code en confiance.',
+      points: [
+        'Noyau CLI + daemon avec passerelle MCP optionnelle pour Claude Desktop et autres clients',
+        'Application de patchs, inspection fichiers et orchestration avec validations automatiques',
+        'Linux prêt à l\'emploi, macOS et Windows en cours de finalisation'
+      ],
+      cta: 'Installer l\'aperçu',
+      badge: VERSION_BADGE_FR,
+      disclaimer: 'Version d\'aperçu — les API et réglages sécurité peuvent évoluer avant la 1.0.'
+    },
+    how: {
+      title: 'Comment DevIT s\'insère dans votre flux',
+      steps: [
+        { num: '1', title: 'Installer la toolchain', desc: 'Compilez le CLI, le daemon et le serveur MCP via cargo install ou cargo build.' },
+        { num: '2', title: 'Sécuriser le lien', desc: 'Générez un secret partagé et reliez CLI + clients MCP au socket du daemon.' },
+        { num: '3', title: 'Déléguer en sécurité', desc: 'Laissez le LLM utiliser devit_patch_apply ou devit_exec tandis que les politiques appliquent les garde-fous.' }
+      ]
+    },
+    usecases: {
+      title: 'Ce qui fonctionne aujourd\'hui',
+      cases: [
+        { title: 'Patch sous contrôle', desc: 'Parseur de diffs avec rollback et downgrade automatique pour binaires, exec bit ou chemins protégés.' },
+        { title: 'Dépôt immaculé', desc: 'Tests et scripts dans des sandboxes temporaires pour éviter toute pollution du repo.' },
+        { title: 'Traçabilité fine', desc: 'Journal JSONL append-only, signatures HMAC optionnelles pour alertes ou dashboards.' }
+      ]
+    },
+    security: {
+      title: 'Sécurité (alpha)',
+      subtitle: 'Briques de défense déjà en place, avec transparence sur la suite.',
+      bullets: [
+        { text: 'Canonicalisation des chemins et protection contre la traversée', tone: 'ready' },
+        { text: 'Moteur d\'approbation Ask / Moderate / Trusted avec dégradations automatiques', tone: 'ready' },
+        { text: 'Signature HMAC entre CLI ↔ daemon ↔ transport MCP', tone: 'ready' },
+        { text: 'Protection replay (nonce + fenêtre temporelle)', tone: 'planned' },
+        { text: 'Runtimes sandbox (bubblewrap sur Linux, Job Objects sur Windows)', tone: 'partial' },
+        { text: 'Terminaison TLS intégrée', tone: 'planned' },
+        { text: 'Audit sécurité externe', tone: 'planned' }
+      ]
+    },
+    install: {
+      title: 'Installation',
+      prereqs: 'Prérequis',
+      linux: 'Linux (prioritaire) / macOS (validé par la communauté)',
+      windows: 'Windows (aperçu)',
+      linuxSteps: [
+        '# Installation depuis les sources',
+        'git clone https://github.com/n-engine/devit.git',
+        'cd devit',
+        'cargo install --path crates/cli',
+        'cargo install --path devitd',
+        'cargo install --path crates/mcp-server',
+        '',
+        '# Secret partagé + socket daemon',
+        'export DEVIT_SECRET="$(openssl rand -hex 32)"',
+        'devitd --socket /tmp/devitd.sock --secret "$DEVIT_SECRET"',
+        '',
+        '# Configurer le CLI',
+        'export DEVIT_DAEMON_SOCKET=/tmp/devitd.sock',
+        'devit doctor'
+      ],
+      windowsSteps: [
+        '# Compilation (toolchain MSVC)',
+        'git clone https://github.com/n-engine/devit.git',
+        'cd devit',
+        'cargo build --release --target x86_64-pc-windows-msvc',
+        '',
+        '# Lancer le daemon (PowerShell)',
+        '$env:DEVIT_SECRET = "<votre-secret>"',
+        '.\\run.ps1 -Socket \\\\.\\pipe\\devitd',
+        '',
+        '# Configurer le CLI',
+        '$env:DEVIT_DAEMON_SOCKET = "\\\\.\\pipe\\devitd"',
+        '.\\target\\x86_64-pc-windows-msvc\\release\\devit.exe doctor'
+      ]
+    },
+    mcp: {
+      title: 'Exposez DevIT via MCP',
+      desc: 'Servez les outils DevIT à Claude Desktop ou tout client compatible MCP.',
+      steps: [
+        'Exécutez `mcp-server --transport http --host 0.0.0.0 --port 3001 --auth-token <token>`',
+        'Servez `/.well-known/mcp.json` avec les URLs de transport (ajoutez `?ngrok-skip-browser-warning=1` avec ngrok)',
+        'Placez le tout derrière Caddy/nginx pour le TLS et désactivez la compression sur `/sse`',
+        'Enregistrez l\'URL du manifest dans votre client MCP puis testez `tools/list`'
+      ],
+      warning: 'Laissez toujours MCP derrière TLS + authentification ; le serveur natif ne gère pas HTTPS nativement.'
+    },
+    demo: {
+      title: 'DevIT en action',
+      note: 'Regardez une démonstration live des capacités d\'orchestration de DevIT.'
+    },
+    support: { title: 'Support', issues: 'Tickets GitHub', email: 'Email' },
+    footer: {
+      copyright: '© 2025 DevIT.',
+      status: FOOTER_STATUS_FR,
+      note: 'Priorité Linux. Parité OS suivie dans PROJECT_TRACKING/.'
+    }
+  }

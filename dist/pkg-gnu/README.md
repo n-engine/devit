@@ -481,6 +481,13 @@ docker build -f Dockerfile.static -t devit-static .
 
 See [STATIC_BUILD.md](STATIC_BUILD.md) for detailed static building instructions.
 
+## 🙏 Credits
+
+- GPT‑5 Codex — brainstorming, scaffolding, and CI/network slice support.
+- Claude Desktop — MCP client and integration partner; shaped tool ergonomics.
+
+**Built with Rust 🦀, paranoia 🔐, and co‑built with GPT‑5 Codex and Claude Desktop.**
+
 ## 🔧 Development
 
 ### Quick Development Setup

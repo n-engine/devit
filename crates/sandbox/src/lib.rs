@@ -45,7 +45,7 @@ fn enforce_policy(cmd: &str, policy: &PolicyCfg, sb: &SandboxCfg) -> Result<()> 
     for p in parts {
         let bin = first_word(&p);
         if !allow.contains(&bin) {
-            return Err(anyhow!(format!("sandbox: binaire non autorisé: {bin}")));
+            return Err(anyhow!(format!("sandbox: unauthorized binary: {bin}")));
         }
         if sb.net.eq_ignore_ascii_case("off") && netblk.contains(&bin) {
             return Err(anyhow!(format!(

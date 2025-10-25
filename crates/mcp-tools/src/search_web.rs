@@ -317,7 +317,36 @@ fn html_unescape(s: &str) -> String {
 }
 
 fn domain_of(u: &str) -> Option<String> {
-    Url::parse(u)
-        .ok()
-        .and_then(|p| p.domain().map(|d| d.to_string()))
+    // Accept either a full URL or a bare host.
+    let host = if let Ok(p) = Url::parse(u) {
+        p.host_str().map(|s| s.to_lowercase())?
+    } else {
+        u.to_lowercase()
+    };
+    // Basic eTLD+1 heuristic with a small set of common multi-label public suffixes.
+    // If you enable a future `etld1` feature, this can be replaced with `publicsuffix`.
+    const MULTI_SUFFIXES: &[&str] = &[
+        "co.uk", "ac.uk", "gov.uk", "org.uk", "net.uk",
+        "com.au", "net.au", "org.au", "edu.au",
+        "co.jp", "ne.jp", "or.jp", "ac.jp",
+        "com.br", "com.cn", "com.tw", "com.sg",
+    ];
+    let labels: Vec<&str> = host.split('.').filter(|s| !s.is_empty()).collect();
+    if labels.len() < 2 {
+        return Some(host);
+    }
+    let sld = labels[labels.len() - 2];
+    let tld = labels[labels.len() - 1];
+    let pair = format!("{}.{}", sld, tld);
+    if MULTI_SUFFIXES.contains(&pair.as_str()) {
+        if labels.len() >= 3 {
+            return Some([labels[labels.len() - 3], sld, tld].join("."));
+        }
+        return Some(pair);
+    }
+    Some(pair)
 }
+
+// Test-only helper for shape tests
+#[cfg(any(test, feature = "test-utils"))]
+pub fn __test_domain_of(input: &str) -> Option<String> { domain_of(input) }

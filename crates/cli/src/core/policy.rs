@@ -204,7 +204,7 @@ impl PolicyEngine {
         }
 
         let reason = format!(
-            "Niveau untrusted : confirmation requise pour {} changement(s)",
+            "Untrusted level: confirmation required for {} change(s)",
             context.file_changes.len()
         );
         Ok(PolicyDecision::allow_with_confirmation(reason))
@@ -223,12 +223,12 @@ impl PolicyEngine {
             return Ok(PolicyDecision::allow_with_confirmation(reason));
         }
 
-        // Ask : demander confirmation sauf pour les changements très simples
+        // Ask: request confirmation except for very simple changes
         if self.is_simple_change(context) {
-            let reason = "Changement simple, autorisé automatiquement".to_string();
+            let reason = "Simple change, automatically allowed".to_string();
             Ok(PolicyDecision::allow(reason))
         } else {
-            let reason = "Changement nécessitant confirmation utilisateur".to_string();
+            let reason = "Change requires user confirmation".to_string();
             Ok(PolicyDecision::allow_with_confirmation(reason))
         }
     }
@@ -243,7 +243,7 @@ impl PolicyEngine {
 
         if context.file_changes.len() > context.config.max_files_moderate {
             let reason = format!(
-                "Trop de fichiers ({} > {}), dégradé vers ask",
+                "Too many files ({} > {}), downgraded to Ask",
                 context.file_changes.len(),
                 context.config.max_files_moderate
             );
@@ -254,7 +254,7 @@ impl PolicyEngine {
 
         if total_lines > context.config.max_lines_moderate {
             let reason = format!(
-                "Trop de lignes changées ({} > {}), dégradé vers ask",
+                "Too many lines changed ({} > {}), downgraded to Ask",
                 total_lines, context.config.max_lines_moderate
             );
             return Ok(PolicyDecision::downgrade(reason, ApprovalLevel::Ask, true));
@@ -275,22 +275,22 @@ impl PolicyEngine {
         }
 
         if context.file_changes.iter().any(|fc| fc.is_binary) {
-            let reason = "Les fichiers binaires nécessitent le niveau Ask".to_string();
+            let reason = "Binary files require Ask level".to_string();
             return Ok(PolicyDecision::downgrade(reason, ApprovalLevel::Ask, true));
         }
 
         if context.file_changes.iter().any(|fc| fc.touches_gitmodules) {
             return Ok(PolicyDecision::deny(
-                "Modification de .gitmodules réservée au niveau privileged".to_string(),
+                ".gitmodules modification is restricted to privileged level".to_string(),
             ));
         }
 
         if context.file_changes.iter().any(|fc| fc.touches_submodule) {
-            let reason = "Changement de sous-module nécessite le niveau Ask".to_string();
+            let reason = "Submodule change requires Ask level".to_string();
             return Ok(PolicyDecision::downgrade(reason, ApprovalLevel::Ask, true));
         }
 
-        let reason = "Changement autorisé au niveau moderate".to_string();
+        let reason = "Change allowed at moderate level".to_string();
         Ok(PolicyDecision::allow(reason))
     }
 
@@ -304,7 +304,7 @@ impl PolicyEngine {
 
         if context.file_changes.iter().any(|fc| fc.touches_gitmodules) {
             return Ok(PolicyDecision::deny(
-                "Modification de .gitmodules réservée au niveau privileged".to_string(),
+                ".gitmodules modification is restricted to privileged level".to_string(),
             ));
         }
 
@@ -316,7 +316,7 @@ impl PolicyEngine {
         for file_change in &context.file_changes {
             if file_change.is_binary {
                 if !self.is_whitelisted_binary(file_change, &context.config) {
-                    let reason = format!("Binaire non autorisé: {}", file_change.path.display());
+                    let reason = format!("Unauthorized binary: {}", file_change.path.display());
                     return Ok(PolicyDecision::downgrade(reason, ApprovalLevel::Ask, true));
                 }
             }
@@ -330,7 +330,7 @@ impl PolicyEngine {
         let reason = if requires_confirmation {
             "Sensitive path modified: confirmation required".to_string()
         } else {
-            "Changement autorisé au niveau trusted".to_string()
+            "Change allowed at trusted level".to_string()
         };
 
         if requires_confirmation {
@@ -363,7 +363,7 @@ impl PolicyEngine {
 
             if !path_allowed {
                 let reason = format!(
-                    "Chemin non autorisé en mode privileged: {}",
+                    "Path not allowed in privileged mode: {}",
                     file_change.path.display()
                 );
                 return Ok(PolicyDecision::deny(reason));
@@ -804,7 +804,7 @@ pub struct FileChange {
     /// Si le changement touche un sous-module Git
     pub touches_submodule: bool,
 
-    /// Si le changement touche .gitmodules
+    /// Whether the change touches .gitmodules
     pub touches_gitmodules: bool,
 
     /// Taille du fichier en octets (pour les binaires)
@@ -853,18 +853,18 @@ pub struct PolicyDecision {
     /// Si l'opération est autorisée
     pub allow: bool,
 
-    /// Si une confirmation utilisateur est requise
+    /// Whether user confirmation is required
     pub requires_confirmation: bool,
 
     /// Raison de la décision
     pub reason: String,
 
-    /// Niveau d'approbation dégradé si applicable
+    /// Downgraded approval level, if any
     pub downgraded_to: Option<ApprovalLevel>,
 }
 
 impl PolicyDecision {
-    /// Crée une décision d'autorisation.
+    /// Create an allow decision.
     pub fn allow(reason: String) -> Self {
         Self {
             allow: true,
@@ -874,7 +874,7 @@ impl PolicyDecision {
         }
     }
 
-    /// Crée une décision d'autorisation avec confirmation.
+    /// Create an allow decision requiring confirmation.
     pub fn allow_with_confirmation(reason: String) -> Self {
         Self {
             allow: true,
@@ -884,7 +884,7 @@ impl PolicyDecision {
         }
     }
 
-    /// Crée une décision de refus.
+    /// Create a deny decision.
     pub fn deny(reason: String) -> Self {
         Self {
             allow: false,
@@ -894,7 +894,7 @@ impl PolicyDecision {
         }
     }
 
-    /// Crée une décision avec dégradation de niveau.
+    /// Create a decision with a downgraded approval level.
     pub fn downgrade(
         reason: String,
         downgraded_to: ApprovalLevel,
@@ -913,7 +913,7 @@ impl PolicyDecision {
 mod tests {
     use super::*;
 
-    /// Crée un contexte de test avec des valeurs par défaut.
+    /// Create a test context with default values.
     fn create_test_context(
         file_changes: Vec<FileChange>,
         approval_level: ApprovalLevel,
@@ -931,7 +931,7 @@ mod tests {
         }
     }
 
-    /// Crée un changement de fichier simple pour les tests.
+    /// Create a simple file change for tests.
     fn create_simple_file_change(path: &str) -> FileChange {
         FileChange {
             path: PathBuf::from(path),
@@ -949,7 +949,7 @@ mod tests {
         }
     }
 
-    /// Crée un Policy Engine pour les tests.
+    /// Create a Policy Engine for tests.
     fn create_test_engine() -> PolicyEngine {
         PolicyEngine::new(
             ApprovalLevel::Privileged {
@@ -1046,7 +1046,7 @@ mod tests {
     fn test_ask_complex_change_requires_confirmation() {
         let engine = create_test_engine();
         let mut change = create_simple_file_change("src/main.rs");
-        change.lines_added = 50; // Dépasse le seuil simple
+        change.lines_added = 50; // Exceeds simple threshold
         let changes = vec![change];
         let context = create_test_context(changes, ApprovalLevel::Ask);
 
@@ -1061,7 +1061,7 @@ mod tests {
     fn test_moderate_too_many_files_downgrades() {
         let engine = create_test_engine();
         let mut changes = Vec::new();
-        // Créer plus de fichiers que la limite moderate
+        // Create more files than the moderate limit
         for i in 0..15 {
             changes.push(create_simple_file_change(&format!("src/file{}.rs", i)));
         }
@@ -1154,7 +1154,7 @@ mod tests {
         assert!(decision.allow);
         assert!(decision.requires_confirmation);
         assert_eq!(decision.downgraded_to, Some(ApprovalLevel::Ask));
-        assert!(decision.reason.contains("Binaire non autorisé"));
+        assert!(decision.reason.contains("Unauthorized binary"));
     }
 
     #[test]
@@ -1215,7 +1215,7 @@ mod tests {
 
         assert!(!decision.allow);
         assert!(!decision.requires_confirmation);
-        assert!(decision.reason.contains("non autorisé en mode privileged"));
+        assert!(decision.reason.contains("not allowed in privileged mode"));
     }
 
     #[test]
@@ -1245,7 +1245,7 @@ mod tests {
         let decision = engine.evaluate_changes(&context).unwrap();
 
         assert!(decision.allow);
-        // Symlink interne : peut demander confirmation si changement non simple
+        // Internal symlink: may require confirmation if change is not simple
         assert!(decision.requires_confirmation);
     }
 

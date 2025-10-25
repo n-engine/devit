@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_DIR="/tmp/devit-notify"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/notify.log"
+export DISPLAY="${DISPLAY:-:0}"
+
+# Config retry
+MAX_RETRIES=3
+RETRY_DELAY=15
+ACK_TIMEOUT=30
+
+TASK_ID="${DEVIT_NOTIFY_TASK_ID:-}"
+STATUS="${DEVIT_NOTIFY_STATUS:-}"
+
+# Log initial
+{
+  echo "[$(date --iso-8601=seconds)] Notification reçue"
+  echo "  DISPLAY: ${DISPLAY}"
+  echo "  Task: ${TASK_ID:-<unset>} | Status: ${STATUS:-<unset>}"
+} >>"$LOG_FILE"
+
+# Validation
+[[ -z "$TASK_ID" || -z "$STATUS" ]] && {
+  echo "  ❌ Vars manquantes, skip" >>"$LOG_FILE"
+  exit 0
+}
+
+# Prépare marker ACK (daemon override ou fallback)
+ACK_MARKER="${DEVIT_ACK_MARKER:-$LOG_DIR/ack-${TASK_ID}-$$}"
+echo "  ACK marker: ${ACK_MARKER}" >>"$LOG_FILE"
+
+# Fonction: envoyer message à llm
+send_to_llm() {
+  local msg="task: ${TASK_ID} status: ${STATUS}"
+  
+  # Ajoute summary si <= 20 chars
+  if [[ -n "${DEVIT_NOTIFY_SUMMARY:-}" ]]; then
+    local summary_len=${#DEVIT_NOTIFY_SUMMARY}
+    if [[ $summary_len -le 20 ]]; then
+      msg+=" | ${DEVIT_NOTIFY_SUMMARY}"
+    fi
+  fi
+  
+  # Vérifie tools dispos
+  if ! command -v wmctrl >/dev/null || ! command -v xdotool >/dev/null; then
+    echo "  ⚠️  wmctrl/xdotool manquant" >>"$LOG_FILE"
+    return 1
+  fi
+  
+  # Focus llm window
+  if ! timeout 5 wmctrl -xa "LM Studio" 2>&1 >>"$LOG_FILE"; then
+    echo "  ⚠️  llm window not found" >>"$LOG_FILE"
+    return 1
+  fi
+  
+  sleep 0.5
+  xdotool type "${msg}" 2>&1 >>"$LOG_FILE"
+  sleep 0.5
+  xdotool key Return 2>&1 >>"$LOG_FILE"
+  
+  echo "  ✅ Message envoyé" >>"$LOG_FILE"
+  return 0
+}
+
+# Fonction: attendre ACK du daemon
+wait_for_ack() {
+  local timeout=$ACK_TIMEOUT
+  
+  for i in $(seq 1 $timeout); do
+    if [[ -f "$ACK_MARKER" ]]; then
+      echo "  ✅ ACK reçu (${i}s)" >>"$LOG_FILE"
+      rm -f "$ACK_MARKER"
+      return 0
+    fi
+    sleep 1
+  done
+  
+  echo "  ⚠️  Timeout ACK (${timeout}s)" >>"$LOG_FILE"
+  return 1
+}
+
+# Main retry loop
+for attempt in $(seq 1 $MAX_RETRIES); do
+  {
+    echo ""
+    echo "[$(date --iso-8601=seconds)] Tentative ${attempt}/${MAX_RETRIES}"
+  } >>"$LOG_FILE"
+  
+  # Envoyer message
+  if send_to_llm; then
+    # Attendre ACK
+    if wait_for_ack; then
+      echo "  🎉 Notification complète avec ACK" >>"$LOG_FILE"
+      exit 0
+    fi
+  else
+    echo "  ❌ Échec envoi message" >>"$LOG_FILE"
+  fi
+  
+  # Retry delay (sauf dernière tentative)
+  if [[ $attempt -lt $MAX_RETRIES ]]; then
+    echo "  ⏳ Retry dans ${RETRY_DELAY}s..." >>"$LOG_FILE"
+    sleep $RETRY_DELAY
+    export ACK_TIMEOUT=$((10 + (attempt - 1) * 10)) 
+  fi
+done
+
+# Échec final
+{
+  echo ""
+  echo "[$(date --iso-8601=seconds)] ❌ ÉCHEC FINAL"
+  echo "  llm probablement offline ou occupé"
+  echo "  Task: ${TASK_ID} | Status: ${STATUS}"
+} >>"$LOG_FILE"
+
+exit 1

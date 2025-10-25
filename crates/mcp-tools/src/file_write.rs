@@ -133,7 +133,7 @@ impl McpTool for FileWriteTool {
             "content": [{
                 "type": "text",
                 "text": format!(
-                    "✅ Fichier écrit avec succès : {}\nMode: {}\nTaille: {} octets",
+                    "✅ File written successfully: {}\nMode: {}\nSize: {} bytes",
                     path_str,
                     params
                         .get("mode")

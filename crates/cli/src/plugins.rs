@@ -140,7 +140,7 @@ pub fn invoke_manifest(
     ensure_bin_exists(&wbin)?;
 
     let manifest = load_manifest(manifest_path)?;
-    // Résoudre le chemin du .wasm relativement au manifest
+    // Resolve .wasm path relative to the manifest
     let wasm_path = manifest_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -150,14 +150,14 @@ pub fn invoke_manifest(
     }
     let timeout = per_msg_timeout.unwrap_or_else(timeout_from_env);
 
-    // Préparer la commande wasmtime
+    // Prepare wasmtime command
     let mut cmd = Command::new(&wbin);
     cmd.arg("run");
-    // Ajout de pré-ouvertures explicites (sandbox FS fermée sinon).
+    // Add explicit pre-opened directories (sandbox FS closed otherwise)
     for d in &manifest.allowed_dirs {
         cmd.arg(format!("--dir={d}"));
     }
-    // Variables d'env limitées
+    // Restricted environment variables
     for kv in &manifest.env {
         cmd.arg(format!("--env={kv}"));
     }
@@ -194,7 +194,7 @@ pub fn invoke_manifest(
     match rx.recv_timeout(timeout) {
         Ok(res) => {
             let out = res?;
-            // Option: garder première ligne JSON si plugin log avant.
+            // Option: keep first JSON line if plugin logs before output
             let first_json = out
                 .lines()
                 .find(|l| l.trim_start().starts_with('{') || l.trim_start().starts_with('['))
@@ -204,14 +204,14 @@ pub fn invoke_manifest(
             Ok(v)
         }
         Err(_timeout) => {
-            // Tue le processus plugin si toujours en cours
+            // Kill plugin process if still running
             let _ = child.kill();
             Err(TimeoutErr.into())
         }
     }
 }
 
-/// Résout un plugin par ID dans le registry (DEVIT_PLUGINS_DIR) et l'invoque.
+/// Resolve a plugin by ID from the registry (DEVIT_PLUGINS_DIR) and invoke it.
 pub fn invoke_by_id(
     id: &str,
     stdin_json: &str,
