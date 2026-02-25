@@ -1,2 +1,1 @@
-# devit
-Sandbox-first tooling to let agents work without breaking your project.
+Moved to original source : https://git.hdds.io/hdds/devit
